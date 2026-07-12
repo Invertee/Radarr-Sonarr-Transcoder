@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Transcode Manager</title>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        body { background-color: #f1f3f5; font-family: 'Segoe UI', sans-serif; }
+        .status-badge { cursor: pointer; border: 1px solid #dee2e6; background: #fff !important; border-radius: 12px; min-width: 500px; }
+        #logWindow { height: 280px; background: #1e1e1e; color: #4af626; font-family: 'Consolas', monospace; font-size: 12px; overflow-y: scroll; padding: 15px; border-radius: 8px; border: 1px solid #333; }
+        .stat-box { font-size: 0.8rem; background: #e9ecef; padding: 4px 10px; border-radius: 6px; font-weight: bold; border: 1px solid #dee2e6; }
+        .modal-body { max-height: 500px; overflow-y: auto; }
+        .text-grew { color: #dc3545; font-weight: bold; } /* For files that grew in size */
+    </style>
+</head>
+<body class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold m-0 text-dark">Transcode Manager</h2>
+        
+        <div id="statusCard" class="alert shadow-sm status-badge p-3" onclick="showQueue()">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+                <strong>Status: <span id="statusText" class="text-primary">Idle</span></strong>
+                <span id="percText" class="badge bg-success" style="display:none">0%</span>
+            </div>
+            <div class="progress mb-2" id="progBarCont" style="display:none; height: 10px;">
+                <div id="progBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" style="width: 0%"></div>
+            </div>
+            <div id="statsRow" class="d-flex gap-2 mb-2" style="display:none !important">
+                <div class="stat-box text-success">FPS: <span id="statFps">0</span></div>
+                <div class="stat-box text-primary">SPD: <span id="statSpeed">0x</span></div>
+                <div class="stat-box text-dark">TIME: <span id="statTime">00:00</span></div>
+            </div>
+            <div id="currentFileName" class="small fw-bold text-truncate" style="max-width: 480px;"></div>
+        </div>
+    </div>
+
+    <div class="row mb-4 text-center">
+        <div class="col-md-3"><div class="card border-0 shadow-sm p-3"><h6>Space Saved</h6><h4 class="text-success m-0"><span id="statGB">0.0</span> GB</h4></div></div>
+        <div class="col-md-3"><div class="card border-0 shadow-sm p-3"><h6>Efficiency</h6><h4 class="text-primary m-0"><span id="statPerc">0</span>%</h4></div></div>
+        <div class="col-md-3"><div class="card border-0 shadow-sm p-3"><h6>Processed</h6><h4 class="m-0"><span id="statCount">0</span></h4></div></div>
+        <div class="col-md-3"><div class="card border-0 shadow-sm p-3"><button class="btn btn-outline-danger btn-sm" onclick="clearCache()">Clear Cache</button></div></div>
+    </div>
+
+    <ul class="nav nav-pills mb-3">
+        <li class="nav-item"><a class="nav-link active" data-bs-toggle="pill" href="#sonarrTab">TV Shows</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#radarrTab">Movies</a></li>
+        <li class="nav-item"><a class="nav-link" data-bs-toggle="pill" href="#historyTab">History</a></li>
+    </ul>
+
+    <div class="tab-content bg-white p-3 shadow-sm rounded border">
+        <div class="tab-pane fade show active" id="sonarrTab"><table id="sonarrTable" class="table table-hover w-100"><thead><tr><th>Title</th><th>Disk Size</th><th>Action</th></tr></thead></table></div>
+        <div class="tab-pane fade" id="radarrTab"><table id="radarrTable" class="table table-hover w-100"><thead><tr><th>Movie</th><th>Size</th><th>Action</th></tr></thead></table></div>
+        <div class="tab-pane fade" id="historyTab"><table id="historyTable" class="table table-hover w-100"><thead><tr><th>Date</th><th>File</th><th>Profile</th><th>Saved</th></tr></thead></table></div>
+    </div>
+
+    <div class="mt-4"><div id="logWindow"></div></div>
+
+    <div class="modal fade" id="queueModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+        <div class="modal-header fw-bold d-flex justify-content-between"><span>Queue</span><button class="btn btn-sm btn-outline-danger" onclick="clearQueue()">Clear All</button></div>
+        <div class="modal-body p-0"><ul id="queueList" class="list-group list-group-flush"></ul></div>
+        <div class="modal-footer"><button class="btn btn-danger w-100 fw-bold" onclick="stopProcess()">STOP ACTIVE JOB</button></div>
+    </div></div></div>
+    
+    <div class="modal fade" id="epModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+        <div class="modal-header fw-bold bg-light">
+            <span id="modalTitle">Select Files</span>
+            <select id="qualitySelect" class="form-select form-select-sm w-auto ms-auto mx-2">
+                <option value="low">Low (1080p QP 30)</option>
+                <option value="medium" selected>Medium (1080p QP 24)</option>
+                <option value="high">High (1080p QP 22)</option>
+                <option value="lowres">LowRes (720p QP 26)</option>
+                <option value="skip">No Convert (Skip)</option>
+            </select>
+        </div>
+        <div class="p-2 border-bottom">
+            <input type="text" id="epSearch" class="form-control form-control-sm" placeholder="Filter files (e.g. S01, 1080p)..." onkeyup="filterEpisodes()">
+        </div>
+        <div class="modal-body p-0">
+            <div id="bulkActions" class="p-2 border-bottom bg-light"></div>
+            <ul id="epList" class="list-group list-group-flush"></ul>
+        </div>
+    </div></div></div>
+
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        let historyTable;
+        let currentFileData = [];
+        let currentServiceId = null;
+
+        $(document).ready(function() {
+            $('#sonarrTable').DataTable({ ajax: { url: '/api/shows', dataSrc: '' }, columns: [{ data: 'title' }, { data: 'statistics.sizeOnDisk', render: s => (s/(1024**3)).toFixed(1)+' GB' }, { data: null, render: d => `<button class="btn btn-sm btn-outline-primary" onclick="showEpisodes(${d.id})">Files</button>` }] });
+            $('#radarrTable').DataTable({ ajax: { url: '/api/movies', dataSrc: '' }, columns: [{ data: 'title' }, { data: 'displaySize', render: s => s+' GB' }, { data: null, render: d => d.movieFile ? `<button class="btn btn-sm btn-outline-success" onclick="showMovieFile('${b64(d.movieFile.path)}', '${d.title}')">Select</button>` : 'N/A' }] });
+            
+            historyTable = $('#historyTable').DataTable({ 
+                columns: [
+                    { data: 'timestamp', defaultContent: '' }, 
+                    { data: 'file', defaultContent: '' }, 
+                    { data: 'profile', defaultContent: '' }, 
+                    { data: 'saved', render: s => s.includes('Grew') ? `<span class="text-grew">${s}</span>` : s }
+                ], 
+                order: [[0, 'desc']] 
+            });
+
+            new EventSource("/stream-logs").onmessage = (e) => { const l = $('#logWindow'); l.append(e.data + "<br>"); l.scrollTop(l[0].scrollHeight); };
+            setInterval(updateStatus, 2000);
+        });
+
+        function b64(s) { return btoa(encodeURIComponent(s).replace(/%([0-9A-F]{2})/g, (m, p) => String.fromCharCode('0x' + p))); }
+        function db64(s) { try { return decodeURIComponent(atob(s).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')); } catch(e) { return s; } }
+
+        function updateStatus() {
+            fetch('/api/status').then(r=>r.json()).then(data => {
+                $('#statusText').text(data.current.status);
+                $('#statGB').text(data.stats.saved_gb);
+                $('#statPerc').text(data.stats.percent);
+                $('#statCount').text(data.stats.count);
+                if (data.current.status === 'Processing') {
+                    $('#percText, #progBarCont, #statsRow').attr('style', 'display: flex !important');
+                    $('#percText').text(data.progress + '%');
+                    $('#progBar').css('width', data.progress + '%');
+                    $('#statFps').text(data.current.fps); $('#statSpeed').text(data.current.speed); $('#statTime').text(data.current.time);
+                    $('#currentFileName').text(data.current.file);
+                } else { $('#percText, #progBarCont, #statsRow').hide(); $('#currentFileName').text(''); }
+                const ql = $('#queueList').empty();
+                data.queue.forEach((t, i) => ql.append(`<li class="list-group-item d-flex justify-content-between align-items-center small">${t.path.split('/').pop()}<button class="btn btn-sm text-danger" onclick="removeQueue(${i})">X</button></li>`));
+                if (data.history && data.history.length > 0) historyTable.clear().rows.add(data.history).draw(false);
+            });
+        }
+
+        function filterEpisodes() {
+            const val = $('#epSearch').val().toLowerCase();
+            $("#epList li").each(function() { $(this).toggle($(this).text().toLowerCase().indexOf(val) > -1); });
+        }
+
+        function showMovieFile(path, title) {
+            currentFileData = [{ path: db64(path), relativePath: title, displaySize: 'Movie' }];
+            currentServiceId = null;
+            $('#modalTitle').text("Movie: " + title);
+            $('#bulkActions').hide();
+            renderList();
+            new bootstrap.Modal('#epModal').show();
+        }
+
+        function showEpisodes(id) {
+            currentServiceId = id;
+            $('#epSearch').val('');
+            fetch('/api/episodes/'+id).then(r=>r.json()).then(data => {
+                currentFileData = data;
+                $('#modalTitle').text("TV Show Files");
+                $('#bulkActions').show().html(`<button class="btn btn-warning btn-sm w-100 fw-bold" onclick="queueAll()">QUEUE ALL VISIBLE (${data.length})</button>`);
+                renderList();
+                new bootstrap.Modal('#epModal').show();
+            });
+        }
+
+        function renderList() {
+            const list = $('#epList').empty();
+            currentFileData.forEach(f => {
+                list.append(`<li class="list-group-item d-flex justify-content-between align-items-center small">
+                    <span><strong class="text-primary">${f.displaySize ? '['+f.displaySize+' MB]' : ''}</strong> ${f.relativePath || f.path.split('/').pop()}</span>
+                    <button class="btn btn-sm btn-primary" onclick="queueOne('${b64(f.path)}', ${currentServiceId})">Queue</button>
+                </li>`);
+            });
+        }
+
+        function queueOne(path, sid) { fetch('/api/transcode_file', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path: db64(path), seriesId: sid, quality: $('#qualitySelect').val()}) }); }
+        
+        function queueAll() {
+            const quality = $('#qualitySelect').val();
+            const visibleFiles = [];
+            $("#epList li:visible").each(function() {
+                const text = $(this).find('span').text();
+                const match = currentFileData.find(f => (f.relativePath || f.path).includes(text.split('] ')[1] || text));
+                if (match) visibleFiles.push(match);
+            });
+            if(confirm(`Queue ${visibleFiles.length} files at ${quality}?`)) {
+                fetch('/api/queue_all', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({files: visibleFiles, seriesId: currentServiceId, quality: quality}) })
+                .then(() => bootstrap.Modal.getInstance(document.getElementById('epModal')).hide());
+            }
+        }
+
+        function clearQueue() { if(confirm("Clear queue?")) fetch('/api/queue/clear', {method:'POST'}); }
+        function clearCache() { if(confirm("Clear cache?")) fetch('/api/clear_cache', {method:'POST'}); }
+        function removeQueue(i) { fetch('/api/queue/remove', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({index:i})}); }
+        function stopProcess() { if(confirm("Abort?")) fetch('/api/stop', {method:'POST'}); }
+        function showQueue() { new bootstrap.Modal('#queueModal').show(); }
+    </script>
+</body>
+</html>
