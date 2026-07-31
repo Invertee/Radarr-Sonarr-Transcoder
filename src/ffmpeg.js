@@ -7,7 +7,6 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 
 const SUPPORTED_CONTAINERS = new Set(['.mkv', '.mp4', '.m4v', '.mov', '.m2ts']);
-const UNSUPPORTED_METADATA_ERRORS = new Set(['EPERM', 'EACCES', 'EINVAL', 'ENOSYS', 'ENOTSUP', 'EROFS']);
 
 class FfmpegError extends Error {
   constructor(message, details = '') {
@@ -316,34 +315,17 @@ async function syncDirectory(directoryPath) {
   }
 }
 
-async function applyOriginalMetadata(sidecarPath, originalStat) {
-  try {
-    await fsp.chmod(sidecarPath, originalStat.mode);
-  } catch (error) {
-    if (!UNSUPPORTED_METADATA_ERRORS.has(error.code)) {
-      throw error;
-    }
-  }
-
-  try {
-    await fsp.chown(sidecarPath, originalStat.uid, originalStat.gid);
-  } catch (error) {
-    if (!UNSUPPORTED_METADATA_ERRORS.has(error.code)) {
-      throw error;
-    }
-  }
-}
-
 async function atomicReplace(inputPath, outputPath) {
-  const originalStat = await fsp.stat(inputPath);
   const inputDirectory = path.dirname(inputPath);
   const extension = path.extname(inputPath);
   const sidecarPath = path.join(inputDirectory, `.transcode-manager-${crypto.randomBytes(6).toString('hex')}${extension}`);
 
   try {
     await fsp.copyFile(outputPath, sidecarPath, fs.constants.COPYFILE_EXCL);
-    await applyOriginalMetadata(sidecarPath, originalStat);
 
+    // CIFS and other network filesystems commonly reject chmod/chown even when
+    // the share is fully writable. The mount's file_mode, dir_mode, uid and gid
+    // settings already determine the resulting metadata, so avoid changing it.
     const handle = await fsp.open(sidecarPath, 'r');
     try {
       await handle.sync();
