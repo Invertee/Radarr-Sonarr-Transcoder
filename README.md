@@ -195,26 +195,6 @@ Only one worker is created. A process lock also prevents a second application in
 - A job left in `processing` after an unexpected process failure is requeued on the next start.
 - Stopping an active job deletes only its temporary output; it does not modify the source media.
 
-## Initial statistics
-
-A new database is seeded with the requested historical baseline:
-
-| Statistic | Baseline |
-|---|---:|
-| Space saved | 1023.21 GiB |
-| Efficiency | 56.3% |
-| Files processed | 805 |
-
-The exact seed values are:
-
-```text
-total_original_bytes = 1951444710009
-total_saved_bytes    = 1098663371735
-files_processed      = 805
-```
-
-Every successful conversion is added to those totals. Failed, cancelled and skipped jobs do not increase the processed count.
-
 ## Automatic deployment
 
 `transcode-manager-update.timer` checks the configured Git branch every five minutes.
