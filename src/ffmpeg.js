@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 
 const SUPPORTED_CONTAINERS = new Set(['.mkv', '.mp4', '.m4v', '.mov', '.m2ts']);
+const UNSUPPORTED_METADATA_ERRORS = new Set(['EPERM', 'EACCES', 'EINVAL', 'ENOSYS', 'ENOTSUP', 'EROFS']);
 
 class FfmpegError extends Error {
   constructor(message, details = '') {
@@ -123,9 +124,6 @@ function buildFfmpegArgs({ inputPath, outputPath, profile, config }) {
     '-max_muxing_queue_size', '4096'
   ];
 
-  // Matroska can safely retain arbitrary subtitle and attachment streams. MP4-family
-  // files omit them because copying formats such as PGS or ASS into MP4 would fail.
-  // M2TS is written with FFmpeg's MPEG-TS muxer and retains all audio streams.
   if (extension === '.mkv') {
     args.push('-map', '0:s?', '-map', '0:t?', '-c:s', 'copy', '-c:t', 'copy');
   } else if (extension === '.m2ts') {
@@ -310,13 +308,29 @@ async function syncDirectory(directoryPath) {
     handle = await fsp.open(directoryPath, 'r');
     await handle.sync();
   } catch (error) {
-    // Directory fsync is not available on every filesystem. The file itself has
-    // already been synced, so only ignore known unsupported cases.
-    if (!['EINVAL', 'ENOTSUP', 'EISDIR', 'EPERM'].includes(error.code)) {
+    if (!['EINVAL', 'ENOTSUP', 'EISDIR', 'EPERM', 'EACCES'].includes(error.code)) {
       throw error;
     }
   } finally {
     await handle?.close();
+  }
+}
+
+async function applyOriginalMetadata(sidecarPath, originalStat) {
+  try {
+    await fsp.chmod(sidecarPath, originalStat.mode);
+  } catch (error) {
+    if (!UNSUPPORTED_METADATA_ERRORS.has(error.code)) {
+      throw error;
+    }
+  }
+
+  try {
+    await fsp.chown(sidecarPath, originalStat.uid, originalStat.gid);
+  } catch (error) {
+    if (!UNSUPPORTED_METADATA_ERRORS.has(error.code)) {
+      throw error;
+    }
   }
 }
 
@@ -328,14 +342,7 @@ async function atomicReplace(inputPath, outputPath) {
 
   try {
     await fsp.copyFile(outputPath, sidecarPath, fs.constants.COPYFILE_EXCL);
-    await fsp.chmod(sidecarPath, originalStat.mode);
-    try {
-      await fsp.chown(sidecarPath, originalStat.uid, originalStat.gid);
-    } catch (error) {
-      if (!['EPERM', 'ENOSYS'].includes(error.code)) {
-        throw error;
-      }
-    }
+    await applyOriginalMetadata(sidecarPath, originalStat);
 
     const handle = await fsp.open(sidecarPath, 'r');
     try {
