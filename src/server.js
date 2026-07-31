@@ -33,12 +33,11 @@ const app = express();
 
 app.disable('x-powered-by');
 app.use((request, response, next) => {
-  response.setHeader('Content-Security-Policy', "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'");
+  response.setHeader('Content-Security-Policy', `default-src 'self'; base-uri 'none'; frame-ancestors ${config.frameAncestors}; form-action 'self'; img-src 'self' data:; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'`);
   response.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   response.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   response.setHeader('Referrer-Policy', 'no-referrer');
   response.setHeader('X-Content-Type-Options', 'nosniff');
-  response.setHeader('X-Frame-Options', 'DENY');
   next();
 });
 app.use(express.json({ limit: '2mb', strict: true }));
@@ -130,7 +129,8 @@ server = app.listen(config.port, config.host, () => {
     version: config.appVersion,
     address: `http://${config.host}:${config.port}`,
     database: config.databasePath,
-    vaapiDevice: config.vaapiDevice
+    vaapiDevice: config.vaapiDevice,
+    frameAncestors: config.frameAncestors
   });
   worker.start();
   workerStarted = true;
