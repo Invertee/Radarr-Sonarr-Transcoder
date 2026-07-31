@@ -1,6 +1,6 @@
 {
   "name": "radarr-sonarr-transcoder",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "private": true,
   "description": "Local Sonarr/Radarr webhook transcoder with a persistent SQLite queue and VAAPI FFmpeg worker.",
   "main": "src/server.js",
