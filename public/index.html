@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Transcode Manager</title>
+  <link rel="stylesheet" href="/styles.v2.0.1.css?v=2.0.1">
+</head>
+<body>
+  <main class="page-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Local media processing</p>
+        <h1>Transcode Manager</h1>
+        <p class="subtitle">Sonarr and Radarr webhook queue with one-at-a-time VAAPI conversion.</p>
+      </div>
+      <section class="status-card" aria-live="polite">
+        <div class="status-card__header">
+          <span>Status</span>
+          <strong id="statusText">Loading</strong>
+        </div>
+        <div class="progress-track" aria-label="Current transcode progress">
+          <div id="progressBar" class="progress-bar" style="width:0%"></div>
+        </div>
+        <div class="status-card__details">
+          <span id="currentFile">No active job</span>
+          <span id="currentMetrics">0%</span>
+        </div>
+      </section>
+    </header>
+
+    <section class="stats-grid" aria-label="Transcode statistics">
+      <article class="stat-card">
+        <span>Space Saved</span>
+        <strong id="statSaved">1023.21 GB</strong>
+      </article>
+      <article class="stat-card">
+        <span>Efficiency</span>
+        <strong id="statEfficiency">56.3%</strong>
+      </article>
+      <article class="stat-card">
+        <span>Processed</span>
+        <strong id="statProcessed">805</strong>
+      </article>
+      <article class="stat-card stat-card--actions">
+        <button id="clearCacheButton" class="button button--danger button--outline" type="button">Clear Cache</button>
+      </article>
+    </section>
+
+    <section class="connection-row" aria-label="Service connections">
+      <span id="sonarrConnection" class="connection-badge">Sonarr: checking</span>
+      <span id="radarrConnection" class="connection-badge">Radarr: checking</span>
+      <button id="refreshConnectionsButton" class="button button--small button--ghost" type="button">Check connections</button>
+      <span class="version">Version <span id="appVersion">2.0.1</span></span>
+    </section>
+
+    <nav class="tabs" aria-label="Application sections">
+      <button class="tab is-active" data-panel="queuePanel" type="button">Queue <span id="queueCount" class="count-badge">0</span></button>
+      <button class="tab" data-panel="tvPanel" type="button">TV Shows</button>
+      <button class="tab" data-panel="moviesPanel" type="button">Movies</button>
+      <button class="tab" data-panel="historyPanel" type="button">History</button>
+      <button class="tab" data-panel="logsPanel" type="button">Logs</button>
+    </nav>
+
+    <section id="queuePanel" class="panel is-active">
+      <div class="panel-header">
+        <div>
+          <h2>Conversion Queue</h2>
+          <p>Only one job is processed at a time. Use the arrows to change pending job order.</p>
+        </div>
+        <div class="button-row">
+          <button id="cancelActiveButton" class="button button--danger" type="button" disabled>Stop Active Job</button>
+          <button id="clearQueueButton" class="button button--outline" type="button">Clear Pending</button>
+        </div>
+      </div>
+
+      <form id="manualJobForm" class="manual-form">
+        <div class="field field--wide">
+          <label for="manualPath">Manual file path</label>
+          <input id="manualPath" name="path" type="text" placeholder="/mnt/media/Movies/example.mkv" required>
+        </div>
+        <div class="field">
+          <label for="manualProfile">Profile</label>
+          <select id="manualProfile" name="profileKey"></select>
+        </div>
+        <button class="button button--primary" type="submit">Add to Queue</button>
+      </form>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Media</th>
+              <th>Profile</th>
+              <th>Source</th>
+              <th>Queued</th>
+              <th class="actions-column">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="queueBody">
+            <tr><td colspan="6" class="empty-cell">The queue is empty.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="tvPanel" class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Sonarr Media Browser</h2>
+          <p>Select a series to view its files, size, duration, resolution and conversion state.</p>
+        </div>
+        <div class="toolbar">
+          <input id="seriesSearch" class="search-input" type="search" placeholder="Filter shows" aria-label="Filter Sonarr shows">
+          <button id="refreshSeriesButton" class="button button--outline" type="button">Refresh Shows</button>
+        </div>
+      </div>
+      <div class="split-layout">
+        <div class="table-wrap split-layout__list">
+          <table>
+            <thead><tr><th>Series</th><th>Files</th><th>Size</th><th></th></tr></thead>
+            <tbody id="seriesBody"><tr><td colspan="4" class="empty-cell">Open this tab to load Sonarr.</td></tr></tbody>
+          </table>
+        </div>
+        <div class="split-layout__detail">
+          <div class="detail-heading">
+            <div>
+              <h3 id="episodeHeading">Series files</h3>
+              <span id="episodeSummary"></span>
+            </div>
+            <input id="episodeSearch" class="search-input search-input--compact" type="search" placeholder="Filter files" aria-label="Filter episode files">
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr><th>Episode</th><th>Size</th><th>Length</th><th>Resolution</th><th>Audio</th><th>Converted</th><th>Profile</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="episodesBody"><tr><td colspan="8" class="empty-cell">Select a series.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="moviesPanel" class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Radarr Media Browser</h2>
+          <p>Review movie metadata and queue manual conversions.</p>
+        </div>
+        <div class="toolbar">
+          <input id="movieSearch" class="search-input" type="search" placeholder="Filter movies" aria-label="Filter Radarr movies">
+          <button id="refreshMoviesButton" class="button button--outline" type="button">Refresh Movies</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Movie</th><th>Size</th><th>Length</th><th>Resolution</th><th>Audio</th><th>Converted</th><th>Profile</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="moviesBody"><tr><td colspan="8" class="empty-cell">Open this tab to load Radarr.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="historyPanel" class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Job History</h2>
+          <p>Completed, failed, cancelled and skipped jobs are retained in SQLite.</p>
+        </div>
+        <div class="toolbar">
+          <input id="historySearch" class="search-input" type="search" placeholder="Filter history" aria-label="Filter job history">
+          <button id="refreshHistoryButton" class="button button--outline" type="button">Refresh History</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Finished</th><th>Media</th><th>Status</th><th>Profile</th><th>Original</th><th>Output</th><th>Saved</th><th>Details</th></tr>
+          </thead>
+          <tbody id="historyBody"><tr><td colspan="8" class="empty-cell">Open this tab to load history.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="logsPanel" class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Application Log</h2>
+          <p>The latest FFmpeg failure output is also available at <code>/api/debug_log</code>.</p>
+        </div>
+        <button id="refreshLogsButton" class="button button--outline" type="button">Refresh Logs</button>
+      </div>
+      <pre id="logWindow" class="log-window">Open this tab to load logs.</pre>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="/app.v2.0.1.js?v=2.0.1" defer></script>
+</body>
+</html>

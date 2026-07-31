@@ -1,0 +1,22 @@
+{
+  "name": "radarr-sonarr-transcoder",
+  "version": "2.0.1",
+  "private": true,
+  "description": "Local Sonarr/Radarr webhook transcoder with a persistent SQLite queue and VAAPI FFmpeg worker.",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=24.15"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "start:env": "node --env-file=.env src/server.js",
+    "test": "node --test test/*.test.js",
+    "check": "node scripts/check-syntax.js && bash -n install.sh",
+    "smoke": "node scripts/smoke.js",
+    "ci": "npm run check && npm test && npm run smoke"
+  },
+  "dependencies": {
+    "express": "5.2.1"
+  }
+}

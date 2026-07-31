@@ -1,1 +1,10 @@
-web/venv/lib
+node_modules/
+.env
+*.log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+data/
+cache/
+coverage/
+.DS_Store
