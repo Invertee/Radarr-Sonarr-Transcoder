@@ -21,6 +21,27 @@ function string(name, fallback = '') {
   return raw === undefined ? fallback : raw.trim();
 }
 
+function frameAncestors() {
+  const configured = string('FRAME_ANCESTORS', "'self' https:");
+  const values = configured.split(/\s+/).filter(Boolean);
+  const valid = values.filter((value) => {
+    if (["'self'", "'none'", '*', 'http:', 'https:'].includes(value)) {
+      return true;
+    }
+    try {
+      const url = new URL(value);
+      return ['http:', 'https:'].includes(url.protocol) && url.pathname === '/' && !url.search && !url.hash;
+    } catch {
+      return false;
+    }
+  });
+
+  if (valid.length === 0) {
+    throw new Error('FRAME_ANCESTORS must contain one or more CSP frame-ancestors sources');
+  }
+  return valid.join(' ');
+}
+
 const workingDirectory = process.cwd();
 const dataDir = path.resolve(string('DATA_DIR', path.join(workingDirectory, 'data')));
 const cacheDir = path.resolve(string('CACHE_DIR', path.join(workingDirectory, 'cache')));
@@ -31,6 +52,7 @@ const config = Object.freeze({
   nodeEnv: string('NODE_ENV', 'production'),
   host: string('HOST', '0.0.0.0'),
   port: integer('PORT', 5000, 1, 65535),
+  frameAncestors: frameAncestors(),
   dataDir,
   cacheDir,
   logDir,
