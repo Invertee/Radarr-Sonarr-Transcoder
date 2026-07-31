@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 
-const SUPPORTED_CONTAINERS = new Set(['.mkv', '.mp4', '.m4v', '.mov']);
+const SUPPORTED_CONTAINERS = new Set(['.mkv', '.mp4', '.m4v', '.mov', '.m2ts']);
 
 class FfmpegError extends Error {
   constructor(message, details = '') {
@@ -97,7 +97,7 @@ function supportedContainer(filePath) {
   if (SUPPORTED_CONTAINERS.has(extension)) {
     return extension;
   }
-  throw new FfmpegError(`Unsupported output container ${extension || '(none)'}. Supported containers are MKV, MP4, M4V and MOV.`);
+  throw new FfmpegError(`Unsupported output container ${extension || '(none)'}. Supported containers are MKV, MP4, M4V, MOV and M2TS.`);
 }
 
 function buildFfmpegArgs({ inputPath, outputPath, profile, config }) {
@@ -125,8 +125,11 @@ function buildFfmpegArgs({ inputPath, outputPath, profile, config }) {
 
   // Matroska can safely retain arbitrary subtitle and attachment streams. MP4-family
   // files omit them because copying formats such as PGS or ASS into MP4 would fail.
+  // M2TS is written with FFmpeg's MPEG-TS muxer and retains all audio streams.
   if (extension === '.mkv') {
     args.push('-map', '0:s?', '-map', '0:t?', '-c:s', 'copy', '-c:t', 'copy');
+  } else if (extension === '.m2ts') {
+    args.push('-f', 'mpegts', '-mpegts_m2ts_mode', '1');
   } else {
     args.push('-movflags', '+faststart');
   }
