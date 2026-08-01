@@ -2,8 +2,13 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
 const {
   FfmpegError,
+  atomicReplace,
+  bufferedCopy,
   buildFfmpegArgs,
   createProgressParser,
   verifyOutput
@@ -45,6 +50,18 @@ test('MP4 outputs avoid incompatible subtitle and attachment copies', () => {
   assert.ok(args.some((value, index) => value === '-movflags' && args[index + 1] === '+faststart'));
 });
 
+test('M2TS outputs select the MPEG-TS muxer', () => {
+  const args = buildFfmpegArgs({
+    inputPath: '/media/example.m2ts',
+    outputPath: '/cache/example.m2ts',
+    profile: getProfile('medium'),
+    config
+  });
+
+  assert.ok(args.some((value, index) => value === '-f' && args[index + 1] === 'mpegts'));
+  assert.ok(args.some((value, index) => value === '-mpegts_m2ts_mode' && args[index + 1] === '1'));
+});
+
 test('progress parser handles FFmpeg output split across chunks', () => {
   const updates = [];
   const parser = createProgressParser({
@@ -71,4 +88,33 @@ test('output verification rejects missing audio streams', () => {
     ),
     FfmpegError
   );
+});
+
+test('buffered copy preserves the complete file', async (context) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'transcode-copy-'));
+  context.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const sourcePath = path.join(directory, 'source.mkv');
+  const destinationPath = path.join(directory, 'destination.mkv');
+  const sourceData = Buffer.alloc((5 * 1024 * 1024) + 137, 0x5a);
+  await fs.writeFile(sourcePath, sourceData);
+
+  await bufferedCopy(sourcePath, destinationPath);
+
+  const destinationData = await fs.readFile(destinationPath);
+  assert.deepEqual(destinationData, sourceData);
+});
+
+test('atomic replacement leaves no sidecar files', async (context) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'transcode-replace-'));
+  context.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const inputPath = path.join(directory, 'movie.mkv');
+  const outputPath = path.join(directory, 'converted.mkv');
+  await fs.writeFile(inputPath, 'original');
+  await fs.writeFile(outputPath, 'converted output');
+
+  await atomicReplace(inputPath, outputPath);
+
+  assert.equal(await fs.readFile(inputPath, 'utf8'), 'converted output');
+  const sidecars = (await fs.readdir(directory)).filter((name) => name.startsWith('.transcode-manager-'));
+  assert.deepEqual(sidecars, []);
 });
