@@ -11,6 +11,9 @@ const { QueueWorker } = require('./queue-worker');
 const { createRouter } = require('./routes');
 const { acquireInstanceLock } = require('./instance-lock');
 const { getProfile } = require('./profiles');
+const { removeStaleCacheFiles } = require('./cache-cleaner');
+
+const CACHE_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
 for (const directory of [config.dataDir, config.cacheDir, config.logDir]) {
   fs.mkdirSync(directory, { recursive: true });
@@ -88,7 +91,33 @@ app.use((error, request, response, next) => {
 
 let shuttingDown = false;
 let workerStarted = false;
+let cacheCleanupInFlight = false;
+let cacheCleanupTimer = null;
 let server;
+
+async function runCacheCleanup() {
+  if (cacheCleanupInFlight) {
+    return;
+  }
+  cacheCleanupInFlight = true;
+  try {
+    const removed = await removeStaleCacheFiles({
+      cacheDir: config.cacheDir,
+      activeTempPath: worker.activeTempPath(),
+      retentionMs: config.cacheRetentionHours * 60 * 60 * 1000
+    });
+    if (removed > 0) {
+      logger.info('Removed expired transcode cache files', {
+        removed,
+        retentionHours: config.cacheRetentionHours
+      });
+    }
+  } catch (error) {
+    logger.warn('Scheduled transcode cache cleanup failed', { error: error.stack || error.message });
+  } finally {
+    cacheCleanupInFlight = false;
+  }
+}
 
 async function shutdown(signal, exitCode = 0) {
   if (shuttingDown) {
@@ -96,6 +125,11 @@ async function shutdown(signal, exitCode = 0) {
   }
   shuttingDown = true;
   logger.info('Service shutdown requested', { signal, exitCode });
+
+  if (cacheCleanupTimer) {
+    clearInterval(cacheCleanupTimer);
+    cacheCleanupTimer = null;
+  }
 
   const serverClosed = new Promise((resolve) => {
     if (!server?.listening) {
@@ -130,10 +164,14 @@ server = app.listen(config.port, config.host, () => {
     address: `http://${config.host}:${config.port}`,
     database: config.databasePath,
     vaapiDevice: config.vaapiDevice,
-    frameAncestors: config.frameAncestors
+    frameAncestors: config.frameAncestors,
+    cacheRetentionHours: config.cacheRetentionHours
   });
   worker.start();
   workerStarted = true;
+  void runCacheCleanup();
+  cacheCleanupTimer = setInterval(() => void runCacheCleanup(), CACHE_SWEEP_INTERVAL_MS);
+  cacheCleanupTimer.unref?.();
 });
 
 server.on('error', (error) => {
