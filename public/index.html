@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark">
   <title>Transcode Manager</title>
   <link rel="stylesheet" href="/styles.v2.0.1.css?v=2.0.1">
-  <link rel="stylesheet" href="/table-tools.v2.0.2.css?v=2.0.2">
+  <link rel="stylesheet" href="/table-tools.v2.1.0.css?v=2.1.0">
 </head>
 <body>
   <main class="page-shell">
@@ -53,7 +53,7 @@
       <span id="sonarrConnection" class="connection-badge">Sonarr: checking</span>
       <span id="radarrConnection" class="connection-badge">Radarr: checking</span>
       <button id="refreshConnectionsButton" class="button button--small button--ghost" type="button">Check connections</button>
-      <span class="version">Version <span id="appVersion">2.0.3</span></span>
+      <span class="version">Version <span id="appVersion">2.1.0</span></span>
     </section>
 
     <nav class="tabs" aria-label="Application sections">
@@ -111,7 +111,7 @@
       <div class="panel-header">
         <div>
           <h2>Sonarr Media Browser</h2>
-          <p>Select a series to view its files, size, duration, resolution and conversion state.</p>
+          <p>Select a series to view its files, size, resolution and conversion state.</p>
         </div>
         <div class="toolbar">
           <input id="seriesSearch" class="search-input" type="search" placeholder="Filter shows" aria-label="Filter Sonarr shows">
@@ -131,14 +131,19 @@
               <h3 id="episodeHeading">Series files</h3>
               <span id="episodeSummary"></span>
             </div>
-            <input id="episodeSearch" class="search-input search-input--compact" type="search" placeholder="Filter files" aria-label="Filter episode files">
+            <div class="media-browser-controls">
+              <label class="media-profile-control" for="episodeProfile">Profile
+                <select id="episodeProfile" aria-label="Sonarr conversion profile"></select>
+              </label>
+              <input id="episodeSearch" class="search-input search-input--compact" type="search" placeholder="Filter files" aria-label="Filter episode files">
+            </div>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
-                <tr><th>Episode</th><th>Size</th><th>Length</th><th>Resolution</th><th>Audio</th><th>Converted</th><th>Profile</th><th>Actions</th></tr>
+                <tr><th>Episode</th><th>Size</th><th>Resolution</th><th>Audio</th><th>Converted</th><th class="actions-column">Actions</th></tr>
               </thead>
-              <tbody id="episodesBody"><tr><td colspan="8" class="empty-cell">Select a series.</td></tr></tbody>
+              <tbody id="episodesBody"><tr><td colspan="6" class="empty-cell">Select a series.</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -152,6 +157,9 @@
           <p>Review movie metadata and queue manual conversions.</p>
         </div>
         <div class="toolbar">
+          <label class="media-profile-control" for="movieProfile">Profile
+            <select id="movieProfile" aria-label="Radarr conversion profile"></select>
+          </label>
           <input id="movieSearch" class="search-input" type="search" placeholder="Filter movies" aria-label="Filter Radarr movies">
           <button id="refreshMoviesButton" class="button button--outline" type="button">Refresh Movies</button>
         </div>
@@ -159,9 +167,9 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Movie</th><th>Size</th><th>Length</th><th>Resolution</th><th>Audio</th><th>Converted</th><th>Profile</th><th>Actions</th></tr>
+            <tr><th>Movie</th><th>Size</th><th>Resolution</th><th>Audio</th><th>Converted</th><th class="actions-column">Actions</th></tr>
           </thead>
-          <tbody id="moviesBody"><tr><td colspan="8" class="empty-cell">Open this tab to load Radarr.</td></tr></tbody>
+          <tbody id="moviesBody"><tr><td colspan="6" class="empty-cell">Open this tab to load Radarr.</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -200,7 +208,7 @@
   </main>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/app.v2.0.1.js?v=2.0.1" defer></script>
-  <script src="/table-tools.v2.0.3.js?v=2.0.3" defer></script>
+  <script src="/app.v2.1.0.js?v=2.1.0" defer></script>
+  <script src="/table-tools.v2.1.0.js?v=2.1.0" defer></script>
 </body>
 </html>
