@@ -16,6 +16,19 @@ function integer(name, fallback, minimum = 0, maximum = Number.MAX_SAFE_INTEGER)
   return value;
 }
 
+function decimal(name, fallback, minimum = 0, maximum = Number.MAX_VALUE) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === '') {
+    return fallback;
+  }
+
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < minimum || value > maximum) {
+    throw new Error(`${name} must be a number between ${minimum} and ${maximum}`);
+  }
+  return value;
+}
+
 function string(name, fallback = '') {
   const raw = process.env[name];
   return raw === undefined ? fallback : raw.trim();
@@ -69,6 +82,11 @@ const config = Object.freeze({
   queuePollMs: integer('QUEUE_POLL_MS', 1000, 250, 60000),
   cacheRetentionHours: integer('CACHE_RETENTION_HOURS', 12, 1, 720),
   logMaxBytes: integer('LOG_MAX_BYTES', 5 * 1024 * 1024, 1024, 1024 * 1024 * 1024),
+  initialStats: Object.freeze({
+    savedGiB: decimal('STARTING_STATS_SAVED_GIB', 1023.21, 0),
+    efficiencyPercent: decimal('STARTING_STATS_EFFICIENCY_PERCENT', 56.3, 0, 100),
+    filesProcessed: integer('STARTING_STATS_FILES_PROCESSED', 805, 0)
+  }),
   sonarr: Object.freeze({
     url: string('SONARR_URL', 'http://127.0.0.1:8989').replace(/\/$/, ''),
     apiKey: string('SONARR_API_KEY'),
