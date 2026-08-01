@@ -7,6 +7,7 @@
   <title>Transcode Manager</title>
   <link rel="stylesheet" href="/styles.v2.0.1.css?v=2.0.1">
   <link rel="stylesheet" href="/table-tools.v2.1.0.css?v=2.1.0">
+  <link rel="stylesheet" href="/media-modal.v2.2.0.css?v=2.2.0">
 </head>
 <body>
   <main class="page-shell">
@@ -53,7 +54,7 @@
       <span id="sonarrConnection" class="connection-badge">Sonarr: checking</span>
       <span id="radarrConnection" class="connection-badge">Radarr: checking</span>
       <button id="refreshConnectionsButton" class="button button--small button--ghost" type="button">Check connections</button>
-      <span class="version">Version <span id="appVersion">2.1.0</span></span>
+      <span class="version">Version <span id="appVersion">2.2.0</span></span>
     </section>
 
     <nav class="tabs" aria-label="Application sections">
@@ -111,42 +112,18 @@
       <div class="panel-header">
         <div>
           <h2>Sonarr Media Browser</h2>
-          <p>Select a series to view its files, size, resolution and conversion state.</p>
+          <p>Select a series to open its files in a full-width conversion window.</p>
         </div>
         <div class="toolbar">
           <input id="seriesSearch" class="search-input" type="search" placeholder="Filter shows" aria-label="Filter Sonarr shows">
           <button id="refreshSeriesButton" class="button button--outline" type="button">Refresh Shows</button>
         </div>
       </div>
-      <div class="split-layout">
-        <div class="table-wrap split-layout__list">
-          <table>
-            <thead><tr><th>Series</th><th>Files</th><th>Size</th><th></th></tr></thead>
-            <tbody id="seriesBody"><tr><td colspan="4" class="empty-cell">Open this tab to load Sonarr.</td></tr></tbody>
-          </table>
-        </div>
-        <div class="split-layout__detail">
-          <div class="detail-heading">
-            <div>
-              <h3 id="episodeHeading">Series files</h3>
-              <span id="episodeSummary"></span>
-            </div>
-            <div class="media-browser-controls">
-              <label class="media-profile-control" for="episodeProfile">Profile
-                <select id="episodeProfile" aria-label="Sonarr conversion profile"></select>
-              </label>
-              <input id="episodeSearch" class="search-input search-input--compact" type="search" placeholder="Filter files" aria-label="Filter episode files">
-            </div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr><th>Episode</th><th>Size</th><th>Resolution</th><th>Audio</th><th>Converted</th><th class="actions-column">Actions</th></tr>
-              </thead>
-              <tbody id="episodesBody"><tr><td colspan="6" class="empty-cell">Select a series.</td></tr></tbody>
-            </table>
-          </div>
-        </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Series</th><th>Files</th><th>Size</th><th class="actions-column">Actions</th></tr></thead>
+          <tbody id="seriesBody"><tr><td colspan="4" class="empty-cell">Open this tab to load Sonarr.</td></tr></tbody>
+        </table>
       </div>
     </section>
 
@@ -207,8 +184,35 @@
     </section>
   </main>
 
+  <div id="episodeModal" class="media-modal" role="dialog" aria-modal="true" aria-labelledby="episodeHeading" aria-describedby="episodeSummary" hidden>
+    <section class="media-modal__dialog">
+      <header class="media-modal__header">
+        <div>
+          <h2 id="episodeHeading">Series files</h2>
+          <span id="episodeSummary" class="media-modal__summary"></span>
+        </div>
+        <button id="episodeModalClose" class="media-modal__close" type="button" data-modal-close aria-label="Close episode browser">×</button>
+      </header>
+      <div class="media-modal__toolbar">
+        <label class="media-profile-control" for="episodeProfile">Profile
+          <select id="episodeProfile" aria-label="Sonarr conversion profile"></select>
+        </label>
+        <input id="episodeSearch" class="search-input" type="search" placeholder="Filter files" aria-label="Filter episode files">
+      </div>
+      <div class="table-wrap media-modal__table">
+        <table>
+          <thead>
+            <tr><th>Episode</th><th>Size</th><th>Resolution</th><th>Audio</th><th>Converted</th><th class="actions-column">Actions</th></tr>
+          </thead>
+          <tbody id="episodesBody"><tr><td colspan="6" class="empty-cell">Select a series.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="/app.v2.1.0.js?v=2.1.0" defer></script>
   <script src="/table-tools.v2.1.0.js?v=2.1.0" defer></script>
+  <script src="/episode-modal.v2.2.0.js?v=2.2.0" defer></script>
 </body>
 </html>
