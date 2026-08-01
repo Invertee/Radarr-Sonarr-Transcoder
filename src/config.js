@@ -67,6 +67,7 @@ const config = Object.freeze({
   defaultProfile: string('DEFAULT_PROFILE', 'medium').toLowerCase(),
   arrTimeoutMs: integer('ARR_TIMEOUT_MS', 10000, 1000, 120000),
   queuePollMs: integer('QUEUE_POLL_MS', 1000, 250, 60000),
+  cacheRetentionHours: integer('CACHE_RETENTION_HOURS', 12, 1, 720),
   logMaxBytes: integer('LOG_MAX_BYTES', 5 * 1024 * 1024, 1024, 1024 * 1024 * 1024),
   sonarr: Object.freeze({
     url: string('SONARR_URL', 'http://127.0.0.1:8989').replace(/\/$/, ''),
