@@ -6,6 +6,7 @@ const express = require('express');
 const config = require('./config');
 const { createLogger } = require('./logger');
 const { createDatabase } = require('./db');
+const { seedInitialStatsDatabase } = require('./initial-stats');
 const { ArrClient } = require('./arr-client');
 const { QueueWorker } = require('./queue-worker');
 const { createRouter } = require('./routes');
@@ -21,10 +22,15 @@ for (const directory of [config.dataDir, config.cacheDir, config.logDir]) {
 
 const logger = createLogger({ logPath: config.logPath, maxBytes: config.logMaxBytes });
 const releaseLock = acquireInstanceLock(config.instanceLockPath);
+const initialStatsSeeded = seedInitialStatsDatabase(config.databasePath, config.initialStats);
 const db = createDatabase(config.databasePath, logger);
 const arrClient = new ArrClient(config, logger);
 const worker = new QueueWorker({ db, config, logger, arrClient });
 const startedAt = new Date().toISOString();
+
+if (initialStatsSeeded) {
+  logger.info('Created database with configured starting statistics', config.initialStats);
+}
 
 if (getProfile(config.defaultProfile).key !== config.defaultProfile) {
   logger.warn('DEFAULT_PROFILE was not recognised; medium will be used', { configuredValue: config.defaultProfile });
