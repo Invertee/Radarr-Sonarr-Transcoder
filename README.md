@@ -308,3 +308,41 @@ The main API endpoints are:
 | `POST` | `/api/media/probe` | Read exact file metadata with ffprobe and update the SQLite media cache |
 | `POST` | `/api/webhook/sonarr` | Sonarr webhook |
 | `POST` | `/api/webhook/radarr` | Radarr webhook |
+
+## Podcast analysis (experimental)
+
+The **Podcast analysis** tab has a separate SQLite job queue, job inspector and
+rotating `LOG_DIR/podcast-analysis.log`. The video worker and statistics remain
+independent. Podcast audio is downloaded to temporary storage and never replaces
+a library file. One podcast job runs at a time, concurrently with video jobs.
+
+Install [whisper.cpp](https://github.com/ggml-org/whisper.cpp) and its English
+`ggml-tiny.en.bin` model. Set `PODCAST_WHISPER_PATH` to the `whisper-cli` executable
+and `PODCAST_WHISPER_MODEL` to the model file, then restart the service. See
+`.env.example` for the complete settings. `PODCAST_WHISPER_THREADS` defaults to 2.
+This feature does not require a Whisper-enabled build of FFmpeg.
+
+The analyser scans silence, transcribes bounded English samples, imports publisher
+or embedded chapters and flags configured promotional phrases. Set
+`PODCAST_GEMINI_API_KEY` and a supported `PODCAST_GEMINI_MODEL` for optional semantic
+classification; only transcript excerpts/hints are sent. Without a key, or on a
+provider error, local phrase detection supplies explicitly approximate markers.
+No automatic skipping occurs. Sparse sampling can miss ads and chapter changes.
+
+Point Podwaffle's `analysis_server_url` at this service's LAN base URL. Its web
+client enables new-episode analysis per podcast/profile and offers manual testing
+inside episode diagnostics. No authentication is required between local services.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/podcasts/status` | Settings summary and latest 200 jobs |
+| POST | `/api/podcasts/jobs` | Submit `{requestKey, episodeId, title, enclosureUrl, chaptersUrl?, phrases?}` |
+| GET | `/api/podcasts/jobs/:id` | Job, result and diagnostic log |
+| GET | `/api/podcasts/logs` | Dedicated podcast log |
+
+Reusing a request key returns the same job; conflicting input returns 409.
+Interrupted jobs are requeued on restart. Transcript excerpts and database log
+entries expire after seven days; compact job records and markers remain. Temporary
+audio and transcription output are removed on completion or error. Default limits
+are 512 MiB per download, eight hours per episode, one hour per job and 900 seconds
+of initial sampled audio plus up to 240 seconds of extra phrase context.
