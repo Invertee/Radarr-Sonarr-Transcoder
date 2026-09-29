@@ -6,6 +6,7 @@ const express = require('express');
 const config = require('./config');
 const { createLogger } = require('./logger');
 const { createDatabase } = require('./db');
+const { seedInitialStatsDatabase } = require('./initial-stats');
 const { ArrClient } = require('./arr-client');
 const { QueueWorker } = require('./queue-worker');
 const { createRouter } = require('./routes');
@@ -14,6 +15,9 @@ const { getProfile } = require('./profiles');
 const { createPodcastStore } = require('./podcast-store');
 const { PodcastWorker } = require('./podcast-analysis');
 const { podcastRouter } = require('./podcast-routes');
+const { removeStaleCacheFiles } = require('./cache-cleaner');
+
+const CACHE_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
 
 for (const directory of [config.dataDir, config.cacheDir, config.logDir]) {
   fs.mkdirSync(directory, { recursive: true });
@@ -21,6 +25,7 @@ for (const directory of [config.dataDir, config.cacheDir, config.logDir]) {
 
 const logger = createLogger({ logPath: config.logPath, maxBytes: config.logMaxBytes });
 const releaseLock = acquireInstanceLock(config.instanceLockPath);
+const initialStatsSeeded = seedInitialStatsDatabase(config.databasePath, config.initialStats);
 const db = createDatabase(config.databasePath, logger);
 const arrClient = new ArrClient(config, logger);
 const worker = new QueueWorker({ db, config, logger, arrClient });
@@ -28,6 +33,10 @@ const podcastStore = createPodcastStore(config.databasePath);
 const podcastLogger = createLogger({ logPath: path.join(config.logDir, 'podcast-analysis.log'), maxBytes: config.logMaxBytes });
 const podcastWorker = new PodcastWorker(podcastStore, config, podcastLogger);
 const startedAt = new Date().toISOString();
+
+if (initialStatsSeeded) {
+  logger.info('Created database with configured starting statistics', config.initialStats);
+}
 
 if (getProfile(config.defaultProfile).key !== config.defaultProfile) {
   logger.warn('DEFAULT_PROFILE was not recognised; medium will be used', { configuredValue: config.defaultProfile });
@@ -95,7 +104,33 @@ app.use((error, request, response, next) => {
 
 let shuttingDown = false;
 let workerStarted = false;
+let cacheCleanupInFlight = false;
+let cacheCleanupTimer = null;
 let server;
+
+async function runCacheCleanup() {
+  if (cacheCleanupInFlight) {
+    return;
+  }
+  cacheCleanupInFlight = true;
+  try {
+    const removed = await removeStaleCacheFiles({
+      cacheDir: config.cacheDir,
+      activeTempPath: worker.activeTempPath(),
+      retentionMs: config.cacheRetentionHours * 60 * 60 * 1000
+    });
+    if (removed > 0) {
+      logger.info('Removed expired transcode cache files', {
+        removed,
+        retentionHours: config.cacheRetentionHours
+      });
+    }
+  } catch (error) {
+    logger.warn('Scheduled transcode cache cleanup failed', { error: error.stack || error.message });
+  } finally {
+    cacheCleanupInFlight = false;
+  }
+}
 
 async function shutdown(signal, exitCode = 0) {
   if (shuttingDown) {
@@ -103,6 +138,11 @@ async function shutdown(signal, exitCode = 0) {
   }
   shuttingDown = true;
   logger.info('Service shutdown requested', { signal, exitCode });
+
+  if (cacheCleanupTimer) {
+    clearInterval(cacheCleanupTimer);
+    cacheCleanupTimer = null;
+  }
 
   const serverClosed = new Promise((resolve) => {
     if (!server?.listening) {
@@ -139,11 +179,15 @@ server = app.listen(config.port, config.host, () => {
     address: `http://${config.host}:${config.port}`,
     database: config.databasePath,
     vaapiDevice: config.vaapiDevice,
-    frameAncestors: config.frameAncestors
+    frameAncestors: config.frameAncestors,
+    cacheRetentionHours: config.cacheRetentionHours
   });
   worker.start();
   podcastWorker.start();
   workerStarted = true;
+  void runCacheCleanup();
+  cacheCleanupTimer = setInterval(() => void runCacheCleanup(), CACHE_SWEEP_INTERVAL_MS);
+  cacheCleanupTimer.unref?.();
 });
 
 server.on('error', (error) => {

@@ -7,6 +7,20 @@ const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 
 const SUPPORTED_CONTAINERS = new Set(['.mkv', '.mp4', '.m4v', '.mov', '.m2ts']);
+const TRANSIENT_COPY_ERRORS = new Set([
+  'ECONNABORTED',
+  'ECONNRESET',
+  'EHOSTDOWN',
+  'EHOSTUNREACH',
+  'EIO',
+  'ENETDOWN',
+  'ENETRESET',
+  'ENETUNREACH',
+  'ENOTCONN',
+  'ETIMEDOUT'
+]);
+const COPY_BUFFER_BYTES = 4 * 1024 * 1024;
+const COPY_ATTEMPTS = 3;
 
 class FfmpegError extends Error {
   constructor(message, details = '') {
@@ -21,6 +35,10 @@ class CancelledError extends Error {
     super(message);
     this.name = 'CancelledError';
   }
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function runProcess(command, args, options = {}) {
@@ -123,9 +141,6 @@ function buildFfmpegArgs({ inputPath, outputPath, profile, config }) {
     '-max_muxing_queue_size', '4096'
   ];
 
-  // Matroska can safely retain arbitrary subtitle and attachment streams. MP4-family
-  // files omit them because copying formats such as PGS or ASS into MP4 would fail.
-  // M2TS is written with FFmpeg's MPEG-TS muxer and retains all audio streams.
   if (extension === '.mkv') {
     args.push('-map', '0:s?', '-map', '0:t?', '-c:s', 'copy', '-c:t', 'copy');
   } else if (extension === '.m2ts') {
@@ -310,9 +325,7 @@ async function syncDirectory(directoryPath) {
     handle = await fsp.open(directoryPath, 'r');
     await handle.sync();
   } catch (error) {
-    // Directory fsync is not available on every filesystem. The file itself has
-    // already been synced, so only ignore known unsupported cases.
-    if (!['EINVAL', 'ENOTSUP', 'EISDIR', 'EPERM'].includes(error.code)) {
+    if (!['EINVAL', 'ENOTSUP', 'EISDIR', 'EPERM', 'EACCES'].includes(error.code)) {
       throw error;
     }
   } finally {
@@ -320,34 +333,138 @@ async function syncDirectory(directoryPath) {
   }
 }
 
-async function atomicReplace(inputPath, outputPath) {
-  const originalStat = await fsp.stat(inputPath);
-  const inputDirectory = path.dirname(inputPath);
-  const extension = path.extname(inputPath);
-  const sidecarPath = path.join(inputDirectory, `.transcode-manager-${crypto.randomBytes(6).toString('hex')}${extension}`);
+async function bufferedCopy(sourcePath, destinationPath, signal) {
+  const source = await fsp.open(sourcePath, 'r');
+  let destination = null;
 
   try {
-    await fsp.copyFile(outputPath, sidecarPath, fs.constants.COPYFILE_EXCL);
-    await fsp.chmod(sidecarPath, originalStat.mode);
+    destination = await fsp.open(destinationPath, 'wx', 0o666);
+    const buffer = Buffer.allocUnsafe(COPY_BUFFER_BYTES);
+    let sourcePosition = 0;
+
+    while (true) {
+      if (signal?.aborted) {
+        throw new CancelledError();
+      }
+
+      const { bytesRead } = await source.read(buffer, 0, buffer.length, sourcePosition);
+      if (bytesRead === 0) {
+        break;
+      }
+
+      let written = 0;
+      while (written < bytesRead) {
+        if (signal?.aborted) {
+          throw new CancelledError();
+        }
+        const result = await destination.write(
+          buffer,
+          written,
+          bytesRead - written,
+          sourcePosition + written
+        );
+        if (result.bytesWritten <= 0) {
+          const error = new Error('Destination write returned zero bytes');
+          error.code = 'EIO';
+          throw error;
+        }
+        written += result.bytesWritten;
+      }
+      sourcePosition += bytesRead;
+    }
+
+    await destination.sync();
+  } finally {
+    await destination?.close().catch(() => undefined);
+    await source.close().catch(() => undefined);
+  }
+
+  const [sourceStat, destinationStat] = await Promise.all([
+    fsp.stat(sourcePath),
+    fsp.stat(destinationPath)
+  ]);
+  if (sourceStat.size !== destinationStat.size) {
+    throw new FfmpegError(
+      `Copied output size mismatch: expected ${sourceStat.size} bytes, found ${destinationStat.size}`
+    );
+  }
+}
+
+async function copyToMediaDirectory(sourcePath, inputDirectory, extension, { logger, signal } = {}) {
+  const failedSidecars = [];
+
+  for (let attempt = 1; attempt <= COPY_ATTEMPTS; attempt += 1) {
+    const sidecarPath = path.join(
+      inputDirectory,
+      `.transcode-manager-${crypto.randomBytes(6).toString('hex')}${extension}`
+    );
+
     try {
-      await fsp.chown(sidecarPath, originalStat.uid, originalStat.gid);
+      await bufferedCopy(sourcePath, sidecarPath, signal);
+      await Promise.allSettled(failedSidecars.map((failedPath) => fsp.rm(failedPath, { force: true })));
+      return sidecarPath;
     } catch (error) {
-      if (!['EPERM', 'ENOSYS'].includes(error.code)) {
+      failedSidecars.push(sidecarPath);
+      await fsp.rm(sidecarPath, { force: true }).catch(() => undefined);
+
+      if (error instanceof CancelledError || !TRANSIENT_COPY_ERRORS.has(error.code) || attempt === COPY_ATTEMPTS) {
         throw error;
       }
-    }
 
-    const handle = await fsp.open(sidecarPath, 'r');
+      logger?.warn('Media share copy interrupted; retrying', {
+        attempt,
+        maxAttempts: COPY_ATTEMPTS,
+        sourcePath,
+        destinationDirectory: inputDirectory,
+        code: error.code,
+        error: error.message
+      });
+      await delay(attempt * 2000);
+    }
+  }
+
+  throw new FfmpegError('Media share copy failed after retries');
+}
+
+async function renameWithRetry(sourcePath, destinationPath, logger) {
+  for (let attempt = 1; attempt <= COPY_ATTEMPTS; attempt += 1) {
     try {
-      await handle.sync();
-    } finally {
-      await handle.close();
+      await fsp.rename(sourcePath, destinationPath);
+      return;
+    } catch (error) {
+      if (!TRANSIENT_COPY_ERRORS.has(error.code) || attempt === COPY_ATTEMPTS) {
+        throw error;
+      }
+      logger?.warn('Media share rename interrupted; retrying', {
+        attempt,
+        maxAttempts: COPY_ATTEMPTS,
+        sourcePath,
+        destinationPath,
+        code: error.code,
+        error: error.message
+      });
+      await delay(attempt * 2000);
     }
+  }
+}
 
-    await fsp.rename(sidecarPath, inputPath);
+async function atomicReplace(inputPath, outputPath, options = {}) {
+  const inputDirectory = path.dirname(inputPath);
+  const extension = path.extname(inputPath);
+  let sidecarPath = null;
+
+  try {
+    sidecarPath = await copyToMediaDirectory(outputPath, inputDirectory, extension, options);
+    if (options.signal?.aborted) {
+      throw new CancelledError();
+    }
+    await renameWithRetry(sidecarPath, inputPath, options.logger);
+    sidecarPath = null;
     await syncDirectory(inputDirectory);
   } catch (error) {
-    await fsp.rm(sidecarPath, { force: true });
+    if (sidecarPath) {
+      await fsp.rm(sidecarPath, { force: true }).catch(() => undefined);
+    }
     throw error;
   }
 }
@@ -377,6 +494,7 @@ module.exports = {
   CancelledError,
   FfmpegError,
   atomicReplace,
+  bufferedCopy,
   buildFfmpegArgs,
   clearCache,
   createProgressParser,

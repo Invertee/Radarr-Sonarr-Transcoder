@@ -1,0 +1,127 @@
+body.modal-open {
+  overflow: hidden;
+}
+
+.media-modal[hidden] {
+  display: none;
+}
+
+.media-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgb(15 23 42 / 72%);
+  backdrop-filter: blur(3px);
+}
+
+.media-modal__dialog {
+  display: flex;
+  width: min(1500px, calc(100vw - 36px));
+  max-height: calc(100vh - 36px);
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+  box-shadow: 0 24px 70px rgb(15 23 42 / 35%);
+}
+
+.media-modal__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.media-modal__header h2 {
+  margin: 0;
+}
+
+.media-modal__summary {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.media-modal__close {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-soft, #f8fafc);
+  color: inherit;
+  cursor: pointer;
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.media-modal__close:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.media-modal__toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-soft, #f8fafc);
+}
+
+.media-modal__toolbar .search-input {
+  width: min(420px, 42vw);
+}
+
+.media-modal__table {
+  min-height: 0;
+  padding: 14px 20px 20px;
+}
+
+.media-modal__table .data-table-scroll {
+  max-height: calc(100vh - 255px);
+}
+
+.media-modal__table table {
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .media-modal {
+    padding: 8px;
+  }
+
+  .media-modal__dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+  }
+
+  .media-modal__header,
+  .media-modal__toolbar,
+  .media-modal__table {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .media-modal__toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .media-modal__toolbar .search-input {
+    width: 100%;
+  }
+
+  .media-modal__table .data-table-scroll {
+    max-height: calc(100vh - 310px);
+  }
+}

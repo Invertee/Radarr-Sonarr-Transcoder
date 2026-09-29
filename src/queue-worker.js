@@ -159,7 +159,10 @@ class QueueWorker {
       verifyOutput(inputProbe, outputProbe);
       this.throwIfCancelled();
 
-      await atomicReplace(job.path, tempPath);
+      await atomicReplace(job.path, tempPath, {
+        logger: this.logger,
+        signal: this.activeAbortController.signal
+      });
       const finalStat = await fs.stat(job.path);
 
       const result = {
