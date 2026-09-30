@@ -1,0 +1,22 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { DatabaseSync } = require('node:sqlite');
+const { createDatabase } = require('../src/db');
+const { removePodcastTables } = require('../scripts/remove-podcast-tables');
+test('optional cleanup backs up podcast data and preserves video schema and statistics', async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'transcoder-cleanup-'));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const filename = path.join(directory, 'transcode-manager.sqlite');
+  const video = createDatabase(filename, { info() {}, warn() {}, error() {} }); const before = video.stats(); video.close();
+  const db = new DatabaseSync(filename);
+  db.exec('CREATE TABLE podcast_jobs(id TEXT); CREATE TABLE podcast_job_logs(id TEXT); INSERT INTO podcast_jobs VALUES(\'retained-in-backup\');'); db.close();
+  const result = await removePodcastTables(filename); assert.equal(result.removed, true);
+  const saved = new DatabaseSync(result.backupPath); assert.equal(saved.prepare('SELECT id FROM podcast_jobs').get().id, 'retained-in-backup'); saved.close();
+  const after = createDatabase(filename, { info() {}, warn() {}, error() {} }); assert.deepEqual(after.stats(), before); after.close();
+  const check = new DatabaseSync(filename); assert.equal(check.prepare("SELECT name FROM sqlite_master WHERE name='podcast_jobs'").get(), undefined); check.close();
+  assert.deepEqual(await removePodcastTables(filename), { removed: false });
+});

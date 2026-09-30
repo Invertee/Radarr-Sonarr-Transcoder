@@ -63,7 +63,6 @@
       <button class="tab" data-panel="moviesPanel" type="button">Movies</button>
       <button class="tab" data-panel="historyPanel" type="button">History</button>
       <button class="tab" data-panel="logsPanel" type="button">Logs</button>
-      <button class="tab" data-panel="podcastsPanel" type="button">Podcast analysis</button>
     </nav>
 
     <section id="queuePanel" class="panel is-active">
@@ -183,16 +182,6 @@
       </div>
       <pre id="logWindow" class="log-window">Open this tab to load logs.</pre>
     </section>
-    <section id="podcastsPanel" class="panel">
-      <div class="panel-header"><div><h2>Podcast analysis</h2><p id="podcastHealth">English transcript samples and suggested chapter / advert markers.</p></div>
-        <button id="refreshPodcasts" class="button button--outline" type="button">Refresh</button></div>
-      <p id="podcastError" role="alert"></p>
-      <div class="table-wrap"><table><thead><tr><th>Queued</th><th>Episode</th><th>Status</th><th>Stage</th><th>Progress</th><th>Markers</th><th>Details</th></tr></thead>
-        <tbody id="podcastJobs"><tr><td colspan="7">No podcast jobs yet.</td></tr></tbody></table></div>
-      <h3 id="podcastDetailTitle">Job diagnostics</h3>
-      <pre id="podcastJobDetails" class="log-window">Select a job to see its request, results and diagnostic log.</pre>
-      <h3>Podcast analysis log</h3><pre id="podcastLogs" class="log-window">No log entries yet.</pre>
-    </section>
   </main>
 
   <div id="episodeModal" class="media-modal" role="dialog" aria-modal="true" aria-labelledby="episodeHeading" aria-describedby="episodeSummary" hidden>
@@ -224,7 +213,6 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="/app.v2.0.1.js?v=2.0.1" defer></script>
   <script src="/table-tools.v2.0.3.js?v=2.0.3" defer></script>
-  <script src="/podcasts.v1.js" defer></script>
   <script src="/app.v2.1.0.js?v=2.1.0" defer></script>
   <script src="/table-tools.v2.1.0.js?v=2.1.0" defer></script>
   <script src="/episode-modal.v2.2.0.js?v=2.2.0" defer></script>

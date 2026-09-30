@@ -12,9 +12,6 @@ const { QueueWorker } = require('./queue-worker');
 const { createRouter } = require('./routes');
 const { acquireInstanceLock } = require('./instance-lock');
 const { getProfile } = require('./profiles');
-const { createPodcastStore } = require('./podcast-store');
-const { PodcastWorker } = require('./podcast-analysis');
-const { podcastRouter } = require('./podcast-routes');
 const { removeStaleCacheFiles } = require('./cache-cleaner');
 
 const CACHE_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
@@ -29,9 +26,6 @@ const initialStatsSeeded = seedInitialStatsDatabase(config.databasePath, config.
 const db = createDatabase(config.databasePath, logger);
 const arrClient = new ArrClient(config, logger);
 const worker = new QueueWorker({ db, config, logger, arrClient });
-const podcastStore = createPodcastStore(config.databasePath);
-const podcastLogger = createLogger({ logPath: path.join(config.logDir, 'podcast-analysis.log'), maxBytes: config.logMaxBytes });
-const podcastWorker = new PodcastWorker(podcastStore, config, podcastLogger);
 const startedAt = new Date().toISOString();
 
 if (initialStatsSeeded) {
@@ -56,7 +50,6 @@ app.use((request, response, next) => {
   next();
 });
 app.use(express.json({ limit: '2mb', strict: true }));
-app.use('/api/podcasts', podcastRouter(podcastStore, config, podcastLogger));
 app.use(createRouter({ db, worker, arrClient, config, logger, startedAt }));
 app.get('/', (request, response) => {
   response.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -154,7 +147,6 @@ async function shutdown(signal, exitCode = 0) {
 
   try {
     if (workerStarted) {
-      await podcastWorker.stop();
       await worker.stop();
     }
     await serverClosed;
@@ -164,7 +156,6 @@ async function shutdown(signal, exitCode = 0) {
   } finally {
     try {
       db.close();
-      podcastStore.close();
     } finally {
       releaseLock();
     }
@@ -183,7 +174,6 @@ server = app.listen(config.port, config.host, () => {
     cacheRetentionHours: config.cacheRetentionHours
   });
   worker.start();
-  podcastWorker.start();
   workerStarted = true;
   void runCacheCleanup();
   cacheCleanupTimer = setInterval(() => void runCacheCleanup(), CACHE_SWEEP_INTERVAL_MS);
