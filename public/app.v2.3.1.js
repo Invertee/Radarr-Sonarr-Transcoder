@@ -380,7 +380,7 @@ function renderSeries() {
     <tr>
       <td><span class="table-title">${escapeHtml(series.title)}</span>${series.year ? ` <span class="path-text">${escapeHtml(series.year)}</span>` : ''}</td>
       <td>${escapeHtml(series.episodeFileCount)}</td>
-      <td>${escapeHtml(formatBytes(series.sizeBytes))}</td>
+      <td data-sort-value="${escapeHtml(Number(series.sizeBytes) || 0)}">${escapeHtml(formatBytes(series.sizeBytes))}</td>
       <td><button class="button button--small button--primary" type="button" data-action="browse-series" data-id="${series.id}">Browse</button></td>
     </tr>
   `).join('');
@@ -418,7 +418,7 @@ function renderSonarrFiles() {
     return `
       <tr>
         <td><span class="table-title">${escapeHtml(file.title)}</span><span class="path-text" title="${escapeHtml(file.path)}">${escapeHtml(file.relativePath || file.path)}</span></td>
-        <td>${escapeHtml(formatBytes(file.sizeBytes))}${mediaEstimate(file, elements.episodeProfile.value)}</td>
+        <td data-sort-value="${escapeHtml(Number(file.sizeBytes) || 0)}">${escapeHtml(formatBytes(file.sizeBytes))}${mediaEstimate(file, elements.episodeProfile.value)}</td>
         <td>${escapeHtml(file.resolution || 'Unknown')}</td>
         <td>${escapeHtml(formatAudio(file))}</td>
         <td class="media-state-cell">${mediaState(file)}</td>
@@ -473,7 +473,7 @@ function renderMovies() {
     return `
       <tr>
         <td><span class="table-title">${escapeHtml(movie.title)}${movie.year ? ` (${escapeHtml(movie.year)})` : ''}</span><span class="path-text" title="${escapeHtml(movie.path)}">${escapeHtml(movie.relativePath || (movie.hasFile ? movie.path : 'No file'))}</span></td>
-        <td>${movie.hasFile ? escapeHtml(formatBytes(movie.sizeBytes)) : '-'}${mediaEstimate(movie, elements.movieProfile.value)}</td>
+        <td data-sort-value="${escapeHtml(movie.hasFile ? Number(movie.sizeBytes) || 0 : 0)}">${movie.hasFile ? escapeHtml(formatBytes(movie.sizeBytes)) : '-'}${mediaEstimate(movie, elements.movieProfile.value)}</td>
         <td>${movie.hasFile ? escapeHtml(movie.resolution || 'Unknown') : '-'}</td>
         <td>${movie.hasFile ? escapeHtml(formatAudio(movie)) : '-'}</td>
         <td class="media-state-cell">${movie.hasFile ? mediaState(movie) : statusPill('unknown', 'No file')}</td>
