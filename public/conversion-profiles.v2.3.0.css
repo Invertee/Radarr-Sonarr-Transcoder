@@ -1,0 +1,19 @@
+.profile-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+  max-width: 850px;
+  margin: 24px 0;
+}
+.profile-editor input[type="range"] { padding: 0; accent-color: var(--primary); }
+.profile-editor output { float: right; color: var(--text); }
+.slider-labels { display: flex; justify-content: space-between; color: var(--muted); font-size: .78rem; }
+.profile-help { color: var(--muted); font-size: .84rem; margin: 8px 0 0; overflow-wrap: anywhere; }
+.size-estimate { color: var(--muted); font-size: .8rem; line-height: 1.5; margin: 8px 0 0; }
+.size-estimate:empty { display: none; }
+.manual-estimate { grid-column: 1 / -1; margin: 0; }
+.size-estimate--table { display: block; max-width: 210px; }
+@media (max-width: 700px) {
+  .profile-editor { grid-template-columns: 1fr; }
+  .manual-form { grid-template-columns: 1fr; }
+}

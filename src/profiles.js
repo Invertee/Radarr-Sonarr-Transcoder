@@ -47,19 +47,43 @@ function normalizeTag(tag) {
   return String(tag ?? '').trim().toLowerCase();
 }
 
-function getProfile(key, fallback = 'medium') {
+function getProfile(key, fallback = 'medium', customProfiles = []) {
   const normalized = normalizeTag(key);
-  return PROFILES[normalized] || PROFILES[fallback] || PROFILES.medium;
+  return (Object.hasOwn(PROFILES, normalized) ? PROFILES[normalized] : null)
+    || customProfiles.find((profile) => profile.key === normalized)
+    || (Object.hasOwn(PROFILES, fallback) ? PROFILES[fallback] : null)
+    || customProfiles.find((profile) => profile.key === fallback) || PROFILES.medium;
 }
 
-function listProfiles({ includeSkip = true } = {}) {
-  return Object.values(PROFILES).filter((profile) => includeSkip || profile.key !== 'skip');
+function listProfiles({ includeSkip = true, customProfiles = [] } = {}) {
+  return [...Object.values(PROFILES), ...customProfiles].filter((profile) => includeSkip || profile.key !== 'skip');
 }
 
-function selectProfileFromTags(tags, fallback = 'medium') {
+function validateCustomProfile(input) {
+  const name = typeof input?.name === 'string' ? input.name.trim() : '';
+  const qp = input?.qp;
+  const maxWidth = input?.maxWidth;
+  if (!name || name.length > 60) {
+    throw new Error('Profile name must be between 1 and 60 characters');
+  }
+  if (!Number.isInteger(qp) || qp < 16 || qp > 36) {
+    throw new Error('Quality must be an integer QP between 16 and 36');
+  }
+  if (![854, 1280, 1920, 2560, 3840].includes(maxWidth)) {
+    throw new Error('Maximum resolution must be 480p, 720p, 1080p, 1440p or 2160p');
+  }
+  return { name, qp, maxWidth };
+}
+
+function selectProfileFromTags(tags, fallback = 'medium', customProfiles = []) {
   const normalizedTags = new Set((Array.isArray(tags) ? tags : []).map(normalizeTag).filter(Boolean));
 
   for (const profileKey of TAG_PRIORITY) {
+    if (profileKey === 'lowres') {
+      const custom = customProfiles.find((profile) => normalizedTags.has(profile.key)
+        || normalizedTags.has(`transcode:${profile.key}`) || normalizedTags.has(`transcode-${profile.key}`));
+      if (custom) return custom;
+    }
     for (const alias of TAG_ALIASES[profileKey]) {
       if (normalizedTags.has(alias)) {
         return PROFILES[profileKey];
@@ -67,7 +91,7 @@ function selectProfileFromTags(tags, fallback = 'medium') {
     }
   }
 
-  return getProfile(fallback);
+  return getProfile(fallback, 'medium', customProfiles);
 }
 
 module.exports = {
@@ -75,5 +99,6 @@ module.exports = {
   getProfile,
   listProfiles,
   normalizeTag,
+  validateCustomProfile,
   selectProfileFromTags
 };

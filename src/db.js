@@ -3,6 +3,8 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { DatabaseSync } = require('node:sqlite');
+const { randomUUID } = require('node:crypto');
+const { PROFILES, getProfile, validateCustomProfile } = require('./profiles');
 
 const BASELINE_STATS = Object.freeze({
   totalOriginalBytes: 1951444710009,
@@ -195,6 +197,17 @@ function createDatabase(databasePath, logger) {
       ON media_items(source_service, source_file_id);
   `);
 
+  // Additive migration keeps existing queues and history intact.
+  if (!sqlite.prepare('PRAGMA table_info(jobs)').all().some((column) => column.name === 'profile_json')) {
+    sqlite.exec('ALTER TABLE jobs ADD COLUMN profile_json TEXT');
+  }
+  sqlite.exec(`CREATE TABLE IF NOT EXISTS custom_profiles (
+    key TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    qp INTEGER NOT NULL CHECK (qp BETWEEN 16 AND 36),
+    maxWidth INTEGER NOT NULL CHECK (maxWidth IN (854, 1280, 1920, 2560, 3840))
+  )`);
+
   const timestamp = now();
   sqlite.prepare(`
     INSERT OR IGNORE INTO app_stats (
@@ -210,6 +223,7 @@ function createDatabase(databasePath, logger) {
 
   sqlite.prepare('INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (1, ?)').run(timestamp);
   sqlite.prepare('INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (2, ?)').run(timestamp);
+  sqlite.prepare('INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (3, ?)').run(timestamp);
 
   const transaction = (callback) => createTransaction(sqlite, callback);
 
@@ -246,8 +260,8 @@ function createDatabase(databasePath, logger) {
       INSERT INTO jobs (
         status, queue_position, path, title, profile_key, source_service,
         source_item_id, source_file_id, source_series_id, source_movie_id,
-        event_type, requested_by, created_at
-      ) VALUES ('queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        event_type, requested_by, created_at, profile_json
+      ) VALUES ('queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `),
     findActivePath: sqlite.prepare("SELECT * FROM jobs WHERE path = ? AND status IN ('queued', 'processing') ORDER BY id DESC LIMIT 1"),
     getJob: sqlite.prepare('SELECT * FROM jobs WHERE id = ?'),
@@ -384,6 +398,13 @@ function createDatabase(databasePath, logger) {
       return { job: existing, deduplicated: true };
     }
 
+    const customProfiles = listCustomProfiles();
+    if (!Object.hasOwn(PROFILES, job.profileKey) && !customProfiles.some((profile) => profile.key === job.profileKey)) {
+      const error = new Error(`Unknown profile '${job.profileKey}'`);
+      error.statusCode = 400;
+      throw error;
+    }
+    const profile = getProfile(job.profileKey, 'medium', customProfiles);
     const position = Number(statements.maxQueuePosition.get().position) + 1;
     const createdAt = now();
     const result = statements.insertJob.run(
@@ -398,7 +419,8 @@ function createDatabase(databasePath, logger) {
       job.sourceMovieId ?? null,
       job.eventType || null,
       job.requestedBy || 'manual',
-      createdAt
+      createdAt,
+      JSON.stringify(profile)
     );
     return { job: statements.getJob.get(Number(result.lastInsertRowid)), deduplicated: false };
   });
@@ -537,10 +559,26 @@ function createDatabase(databasePath, logger) {
     });
   }
 
+  function listCustomProfiles() {
+    return sqlite.prepare('SELECT key, name, qp, maxWidth FROM custom_profiles ORDER BY name COLLATE NOCASE, key')
+      .all().map((profile) => ({ ...profile, custom: true }));
+  }
+
+  function saveCustomProfile(input, key = `custom-${randomUUID()}`) {
+    const profile = validateCustomProfile(input);
+    sqlite.prepare(`INSERT INTO custom_profiles (key, name, qp, maxWidth) VALUES (?, ?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET name = excluded.name, qp = excluded.qp, maxWidth = excluded.maxWidth`)
+      .run(key, profile.name, profile.qp, profile.maxWidth);
+    return { key, ...profile, custom: true };
+  }
+
   return Object.freeze({
     sqlite,
     baselineStats: BASELINE_STATS,
     stats,
+    listCustomProfiles,
+    saveCustomProfile,
+    deleteCustomProfile: (key) => Number(sqlite.prepare('DELETE FROM custom_profiles WHERE key = ?').run(key).changes) > 0,
     enqueueJob: (job) => enqueueTransaction(job),
     getJob: (id) => statements.getJob.get(id),
     getQueue: () => statements.getQueue.all(),

@@ -32,7 +32,7 @@ if (initialStatsSeeded) {
   logger.info('Created database with configured starting statistics', config.initialStats);
 }
 
-if (getProfile(config.defaultProfile).key !== config.defaultProfile) {
+if (getProfile(config.defaultProfile, 'medium', db.listCustomProfiles()).key !== config.defaultProfile) {
   logger.warn('DEFAULT_PROFILE was not recognised; medium will be used', { configuredValue: config.defaultProfile });
 }
 

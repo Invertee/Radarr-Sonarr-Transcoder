@@ -1,11 +1,14 @@
 'use strict';
 
 const path = require('node:path');
+const fs = require('node:fs/promises');
+const { jobLogPath } = require('./job-log');
 const express = require('express');
 const { clearCache, probeFile, supportedContainer } = require('./ffmpeg');
 const { PROFILES, getProfile, listProfiles, normalizeTag, selectProfileFromTags } = require('./profiles');
 const { mapServicePath } = require('./path-mapper');
 const { extractWebhookJob } = require('./webhook');
+const { estimateOutputSize } = require('../public/conversion-estimates');
 
 const ALLOWED_SOURCES = new Set(['manual', 'sonarr', 'radarr']);
 
@@ -27,6 +30,7 @@ function publicJob(row) {
     path: row.path,
     title: row.title,
     profileKey: row.profile_key,
+    profile: row.profile_json ? JSON.parse(row.profile_json) : getProfile(row.profile_key),
     sourceService: row.source_service,
     requestedBy: row.requested_by,
     createdAt: row.created_at,
@@ -68,7 +72,7 @@ function validateMediaPath(jobPath) {
   }
 }
 
-function parseJobBody(body, config) {
+function parseJobBody(body, config, customProfiles = []) {
   const jobPath = String(body?.path || '').trim();
   if (!jobPath) {
     throw badRequest('path is required');
@@ -76,10 +80,10 @@ function parseJobBody(body, config) {
   validateMediaPath(jobPath);
 
   const requestedProfile = normalizeTag(body?.profileKey || body?.quality || config.defaultProfile);
-  if (!PROFILES[requestedProfile]) {
+  if (!Object.hasOwn(PROFILES, requestedProfile) && !customProfiles.some((profile) => profile.key === requestedProfile)) {
     throw badRequest(`Unknown profile '${requestedProfile}'`);
   }
-  const profile = getProfile(requestedProfile, config.defaultProfile);
+  const profile = getProfile(requestedProfile, config.defaultProfile, customProfiles);
 
   const sourceService = String(body?.sourceService || 'manual').trim().toLowerCase();
   if (!ALLOWED_SOURCES.has(sourceService)) {
@@ -152,7 +156,33 @@ function createRouter({ db, worker, arrClient, config, logger, startedAt }) {
   });
 
   router.get('/api/profiles', (request, response) => {
-    response.json(listProfiles());
+    response.json(listProfiles({ customProfiles: db.listCustomProfiles() }));
+  });
+
+  router.get('/api/conversion-settings', (request, response) => {
+    response.json({ audioBitrate: config.audioBitrate });
+  });
+
+  function saveProfile(request, response, key) {
+    if (key && !db.listCustomProfiles().some((profile) => profile.key === key)) {
+      return response.status(404).json({ error: 'Custom profile not found' });
+    }
+    let profile;
+    try {
+      profile = db.saveCustomProfile(request.body, key);
+    } catch (error) {
+      throw badRequest(error.message);
+    }
+    return response.status(key ? 200 : 201).json(profile);
+  }
+
+  router.post('/api/profiles', (request, response) => saveProfile(request, response));
+  router.put('/api/profiles/:key', (request, response) => saveProfile(request, response, request.params.key));
+  router.delete('/api/profiles/:key', (request, response) => {
+    if (!db.deleteCustomProfile(request.params.key)) {
+      return response.status(404).json({ error: 'Custom profile not found' });
+    }
+    return response.status(204).end();
   });
 
   router.get('/api/connections', asyncRoute(async (request, response) => {
@@ -165,7 +195,7 @@ function createRouter({ db, worker, arrClient, config, logger, startedAt }) {
   });
 
   router.post('/api/queue', (request, response) => {
-    const result = db.enqueueJob(parseJobBody(request.body, config));
+    const result = db.enqueueJob(parseJobBody(request.body, config, db.listCustomProfiles()));
     response.status(result.deduplicated ? 200 : 201).json({
       deduplicated: result.deduplicated,
       job: publicJob(result.job)
@@ -207,6 +237,28 @@ function createRouter({ db, worker, arrClient, config, logger, startedAt }) {
     response.json(db.getHistory(request.query.limit).map(publicJob));
   });
 
+  router.get('/api/history/:id/ffmpeg-log', asyncRoute(async (request, response) => {
+    const id = Number(request.params.id);
+    if (!Number.isSafeInteger(id) || id < 1) throw badRequest('Invalid job ID');
+    const job = db.getJob(id);
+    if (!job || job.status !== 'failed') {
+      return response.status(404).json({ error: 'Failed job not found' });
+    }
+    const logPath = jobLogPath(config, id);
+    try {
+      await fs.access(logPath);
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+      if (!job.error) return response.status(404).json({ error: 'No failure log is available' });
+      return response.attachment('ffmpeg-job-' + id + '.log').type('text/plain').send(
+        'Full FFmpeg output is unavailable for this job. Saved failure details follow.\n\n' + job.error + '\n'
+      );
+    }
+    return new Promise((resolve, reject) => {
+      response.download(logPath, 'ffmpeg-job-' + id + '.log', (error) => error ? reject(error) : resolve());
+    });
+  }));
+
   router.get('/api/logs', (request, response) => {
     const limit = Math.min(Math.max(Number(request.query.limit) || 200, 1), 1000);
     response.json({ lines: logger.tail(limit) });
@@ -244,6 +296,17 @@ function createRouter({ db, worker, arrClient, config, logger, startedAt }) {
       audioLanguages: probe.audioLanguages,
       subtitleStreams: probe.subtitleStreams,
       attachmentStreams: probe.attachmentStreams
+    });
+  }));
+
+  router.post('/api/media/estimate', asyncRoute(async (request, response) => {
+    const job = parseJobBody(request.body, config, db.listCustomProfiles());
+    const profile = getProfile(job.profileKey, config.defaultProfile, db.listCustomProfiles());
+    const probe = await probeFile(job.path, config);
+    response.json({
+      metadata: { sizeBytes: probe.sizeBytes, durationSeconds: probe.durationSeconds,
+        width: probe.width, height: probe.height, audioStreams: probe.audioStreams },
+      estimate: estimateOutputSize(probe, profile, config.audioBitrate)
     });
   }));
 
@@ -292,7 +355,7 @@ function createRouter({ db, worker, arrClient, config, logger, startedAt }) {
     }
 
     const tagNames = await arrClient.resolveTagNames(extracted.service, extracted.tags);
-    const profile = selectProfileFromTags(tagNames, config.defaultProfile);
+    const profile = selectProfileFromTags(tagNames, config.defaultProfile, db.listCustomProfiles());
     if (profile.key === 'skip') {
       logger.info('Webhook ignored because media has a skip tag', {
         service: extracted.service,
@@ -346,7 +409,7 @@ function createRouter({ db, worker, arrClient, config, logger, startedAt }) {
     response.json(db.conversionState('radarr', await arrClient.getRadarrMovies()));
   }));
   router.post('/api/transcode_file', (request, response) => {
-    const result = db.enqueueJob(parseJobBody(request.body, config));
+    const result = db.enqueueJob(parseJobBody(request.body, config, db.listCustomProfiles()));
     response.status(result.deduplicated ? 200 : 201).json({
       status: result.deduplicated ? 'Already queued' : 'Queued',
       job: publicJob(result.job)
@@ -359,7 +422,7 @@ function createRouter({ db, worker, arrClient, config, logger, startedAt }) {
       profileKey: request.body?.profileKey || request.body?.quality,
       sourceService: file.sourceService || (request.body?.seriesId ? 'sonarr' : 'manual'),
       sourceSeriesId: request.body?.seriesId
-    }, config)));
+    }, config, db.listCustomProfiles())));
     response.json({ status: 'Bulk queued', added: results.filter((result) => !result.deduplicated).length });
   });
   router.post('/api/queue/remove', (request, response) => {

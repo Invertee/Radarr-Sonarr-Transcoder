@@ -1,4 +1,4 @@
-# Transcode Manager 2.0.1
+# Transcode Manager 2.3.1
 
 A local Node.js application for standardising media imported by Sonarr and Radarr. Download webhooks add files to a persistent SQLite queue, and a single FFmpeg worker converts them with VAAPI hardware acceleration.
 
@@ -8,6 +8,8 @@ The browser interface provides:
 - Current FFmpeg progress, frame rate and speed.
 - Sonarr and Radarr media browsers with file size, duration, resolution and conversion state.
 - Manual conversion jobs.
+- Saved custom profiles with quality and maximum-resolution sliders.
+- Rough output-size previews and live estimates during encoding.
 - Persistent history and space-saving statistics.
 - Application and FFmpeg logs.
 
@@ -155,6 +157,18 @@ Media with no recognised tag uses `DEFAULT_PROFILE`, which defaults to `medium`.
 
 When conflicting tags are present, priority is: `skip`, `lowres`, `low`, `medium`, `high`. Use one transcoder profile tag per series or movie.
 
+## Custom profiles and size estimates
+
+Open **Profiles** to create, edit or delete a named custom conversion profile. The quality slider moves from smaller files to higher quality; the resolution slider sets a maximum of 480p, 720p, 1080p, 1440p or 2160p. The resolution labels describe standard widescreen widths; aspect ratio is preserved and smaller sources are never enlarged. The built-in presets remain available.
+
+Saved profiles are stored in SQLite and appear in the manual-file, movie and episode profile selectors. Each job snapshots its profile when queued, so later edits or deletion do not change pending conversions or their history. For automated imports, apply the stable Sonarr/Radarr tag displayed in the profile editor (or prefix it with `transcode:`). A skip tag takes priority, then a custom profile, then the built-in quality tags. Use only one custom profile tag per item. `DEFAULT_PROFILE` can also be set to the saved profile's key.
+
+Movie and episode size cells show a rough output-size range for the selected profile when duration and dimensions are available. Use **Probe** to fill in missing metadata. For a manual file, enter its path, choose a profile and click **Estimate size**. Estimates update when you select another profile.
+
+During every conversion, the status card first shows the rough range and then an estimated final size based on the bytes and media duration encoded so far. The initial estimate uses a broad HEVC quality/resolution heuristic and the configured AAC bitrate for each audio stream (assuming one stream when browser metadata lacks the count). It is a guide, not a size limit: scene complexity, source quality, copied subtitles/attachments and variable bitrate can change the result substantially. Live estimates can fluctuate when later scenes differ from the opening scenes. A conversion can produce a larger file, which the preview also indicates.
+
+Profile API: `GET/POST /api/profiles`, `PUT/DELETE /api/profiles/:key`. Create/update bodies contain `name`, integer `qp` (16–36; lower is higher quality), and `maxWidth` (854, 1280, 1920, 2560 or 3840). `POST /api/media/estimate` accepts `path` and `profileKey`, probes the file and returns metadata plus a rough estimate.
+
 ## Audio and container handling
 
 The old application forced a single stereo track. This version instead:
@@ -265,7 +279,9 @@ tail -f /var/log/transcode-manager/transcode-manager.log
 tail -f /var/log/transcode-manager/ffmpeg-last.log
 ```
 
-The most recent FFmpeg log is also available at `/api/debug_log`.
+The most recent FFmpeg log is also available at `/api/debug_log`. This file is overwritten when each conversion starts. Failed jobs retain the captured FFmpeg error output in their History details and in the application log, together with the job ID and source path.
+
+An exit code alone (for example, `FFmpeg exited with code 234`) does not identify the cause. Use the saved FFmpeg output for the failed job to find the encoder, filter, audio or container error before changing conversion settings.
 
 ## Database backup
 
@@ -331,3 +347,9 @@ the two podcast tables (and their indexes). It refuses to run while the normal
 service holds its instance lock. The printed backup path can be restored with the
 service stopped. No video tables, models, cache directories or log files are
 deleted. Retain the backup securely until you no longer need the old transcripts.
+
+## Failed-job log downloads
+
+In **Job History**, use **Download FFmpeg log** on a failed job to download its full FFmpeg output, input path and command. Logs are retained under `LOG_DIR/failed-jobs/job-<id>.log` and survive subsequent conversions, service restarts and cache cleanup. Logs from successful or cancelled jobs are removed. Failed logs remain until manually removed.
+
+Failures before FFmpeg starts, older jobs and jobs whose archived log has been removed download the saved failure details instead; these may be truncated and are labelled accordingly. The API endpoint is `GET /api/history/:id/ffmpeg-log`.

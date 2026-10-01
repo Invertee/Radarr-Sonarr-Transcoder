@@ -5,6 +5,8 @@ const fsp = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
+const { finished } = require('node:stream/promises');
+const { jobLogPath } = require('./job-log');
 
 const SUPPORTED_CONTAINERS = new Set(['.mkv', '.mp4', '.m4v', '.mov', '.m2ts']);
 const TRANSIENT_COPY_ERRORS = new Set([
@@ -164,6 +166,8 @@ function progressSnapshot(values, durationSeconds, outputPath) {
   return {
     percent: Number(percent.toFixed(1)),
     outputTimeSeconds: safeOutputTime,
+    outputBytes: Number.isFinite(Number(values.total_size)) && Number(values.total_size) > 0
+      ? Number(values.total_size) : null,
     fps: values.fps || null,
     speed: values.speed || null,
     tempPath: outputPath
@@ -217,10 +221,20 @@ function createTempOutput(jobId, inputPath, cacheDir) {
 async function transcode({ jobId, inputPath, outputPath, profile, durationSeconds, config, logger, signal, onProgress }) {
   await fsp.mkdir(path.dirname(outputPath), { recursive: true });
   const args = buildFfmpegArgs({ inputPath, outputPath, profile, config });
+  const archivePath = jobLogPath(config, jobId);
+  await fsp.mkdir(path.dirname(archivePath), { recursive: true });
   const ffmpegLog = fs.createWriteStream(config.ffmpegLogPath, { flags: 'w' });
+  const jobLog = fs.createWriteStream(archivePath, { flags: 'w' });
+  const logs = [ffmpegLog, jobLog];
+  let logError = null;
+  const flushed = Promise.all(logs.map((stream) => finished(stream).catch((error) => { logError = error; })));
+  jobLog.write(`Job: ${jobId}\nInput: ${inputPath}\nCommand: ${JSON.stringify([config.ffmpegPath, ...args])}\n\n`);
 
   return new Promise((resolve, reject) => {
     const child = spawn(config.ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    for (const stream of logs) {
+      stream.on('error', () => child.kill('SIGTERM'));
+    }
     let stderrTail = '';
     let settled = false;
     let killTimer = null;
@@ -236,8 +250,12 @@ async function transcode({ jobId, inputPath, outputPath, profile, durationSecond
       }
       signal?.removeEventListener('abort', abortHandler);
       progressParser.flush();
-      ffmpegLog.end();
-      callback(value);
+      jobLog.write(`\nResult: ${value instanceof Error ? value.message : 'FFmpeg completed successfully'}\n`);
+      for (const stream of logs) stream.end();
+      flushed.then(() => {
+        if (logError) reject(new FfmpegError(`Could not write FFmpeg log: ${logError.message}`, stderrTail));
+        else callback(value);
+      });
     };
 
     const abortHandler = () => {
@@ -257,7 +275,7 @@ async function transcode({ jobId, inputPath, outputPath, profile, durationSecond
 
     child.stderr.on('data', (chunk) => {
       const text = chunk.toString();
-      ffmpegLog.write(text);
+      for (const stream of logs) stream.write(chunk);
       stderrTail = `${stderrTail}${text}`.slice(-50000);
     });
 

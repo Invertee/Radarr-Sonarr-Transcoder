@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/styles.v2.0.1.css?v=2.0.1">
   <link rel="stylesheet" href="/table-tools.v2.1.0.css?v=2.1.0">
   <link rel="stylesheet" href="/media-modal.v2.2.0.css?v=2.2.0">
+  <link rel="stylesheet" href="/conversion-profiles.v2.3.0.css">
 </head>
 <body>
   <main class="page-shell">
@@ -29,6 +30,7 @@
           <span id="currentFile">No active job</span>
           <span id="currentMetrics">0%</span>
         </div>
+        <p id="currentSizeEstimate" class="size-estimate" aria-live="polite"></p>
       </section>
     </header>
 
@@ -54,7 +56,7 @@
       <span id="sonarrConnection" class="connection-badge">Sonarr: checking</span>
       <span id="radarrConnection" class="connection-badge">Radarr: checking</span>
       <button id="refreshConnectionsButton" class="button button--small button--ghost" type="button">Check connections</button>
-      <span class="version">Version <span id="appVersion">2.2.0</span></span>
+      <span class="version">Version <span id="appVersion">2.3.1</span></span>
     </section>
 
     <nav class="tabs" aria-label="Application sections">
@@ -62,6 +64,7 @@
       <button class="tab" data-panel="tvPanel" type="button">TV Shows</button>
       <button class="tab" data-panel="moviesPanel" type="button">Movies</button>
       <button class="tab" data-panel="historyPanel" type="button">History</button>
+      <button class="tab" data-panel="profilesPanel" type="button">Profiles</button>
       <button class="tab" data-panel="logsPanel" type="button">Logs</button>
     </nav>
 
@@ -86,7 +89,11 @@
           <label for="manualProfile">Profile</label>
           <select id="manualProfile" name="profileKey"></select>
         </div>
-        <button class="button button--primary" type="submit">Add to Queue</button>
+        <div class="button-row">
+          <button id="manualEstimateButton" class="button button--outline" type="button">Estimate size</button>
+          <button class="button button--primary" type="submit">Add to Queue</button>
+        </div>
+        <p id="manualSizeEstimate" class="size-estimate manual-estimate" aria-live="polite">Estimate the output size before queuing.</p>
       </form>
 
       <div class="table-wrap">
@@ -172,6 +179,43 @@
       </div>
     </section>
 
+    <section id="profilesPanel" class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Custom Conversion Profiles</h2>
+          <p>Save a quality and resolution limit, then choose your profile for any conversion.</p>
+        </div>
+      </div>
+      <form id="profileForm" class="profile-editor">
+        <div class="field">
+          <label for="profileEditorKey">Saved profile</label>
+          <select id="profileEditorKey"><option value="">New custom profile</option></select>
+        </div>
+        <div class="field">
+          <label for="profileName">Profile name</label>
+          <input id="profileName" type="text" maxlength="60" placeholder="e.g. Compact TV" required>
+        </div>
+        <div class="field">
+          <label for="profileQuality">Video quality <output id="profileQualityValue" for="profileQuality"></output></label>
+          <input id="profileQuality" type="range" min="0" max="20" value="12" step="1" aria-describedby="profileQualityHelp">
+          <div class="slider-labels"><span>Smaller files</span><span>Higher quality</span></div>
+          <p id="profileQualityHelp" class="profile-help">Higher quality usually produces larger files.</p>
+        </div>
+        <div class="field">
+          <label for="profileResolution">Maximum resolution <output id="profileResolutionValue" for="profileResolution"></output></label>
+          <input id="profileResolution" type="range" min="0" max="4" value="2" step="1" aria-describedby="profileResolutionHelp">
+          <div class="slider-labels"><span>480p</span><span>2160p</span></div>
+          <p id="profileResolutionHelp" class="profile-help">Limits video width and keeps its aspect ratio. Smaller sources stay at their original size.</p>
+        </div>
+        <div class="button-row">
+          <button id="saveProfileButton" class="button button--primary" type="submit">Save profile</button>
+          <button id="deleteProfileButton" class="button button--danger button--outline" type="button" disabled>Delete profile</button>
+        </div>
+        <p id="profileTag" class="profile-help"></p>
+      </form>
+      <p class="profile-help">Queued jobs keep the settings selected when they were added, even if you edit or delete a profile later.</p>
+    </section>
+
     <section id="logsPanel" class="panel">
       <div class="panel-header">
         <div>
@@ -211,9 +255,8 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="/app.v2.0.1.js?v=2.0.1" defer></script>
-  <script src="/table-tools.v2.0.3.js?v=2.0.3" defer></script>
-  <script src="/app.v2.1.0.js?v=2.1.0" defer></script>
+  <script src="/conversion-estimates.js?v=2.3.1" defer></script>
+  <script src="/app.v2.3.1.js" defer></script>
   <script src="/table-tools.v2.1.0.js?v=2.1.0" defer></script>
   <script src="/episode-modal.v2.2.0.js?v=2.2.0" defer></script>
 </body>

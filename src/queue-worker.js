@@ -2,7 +2,9 @@
 
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const { jobLogPath } = require('./job-log');
 const { getProfile } = require('./profiles');
+const { estimateOutputSize, estimateFromProgress } = require('../public/conversion-estimates');
 const {
   CancelledError,
   atomicReplace,
@@ -97,7 +99,8 @@ class QueueWorker {
   }
 
   async processJob(job) {
-    const profile = getProfile(job.profile_key, this.config.defaultProfile);
+    const profile = job.profile_json ? JSON.parse(job.profile_json)
+      : getProfile(job.profile_key, this.config.defaultProfile);
     this.abortReason = null;
     this.activeAbortController = new AbortController();
     this.activeJob = {
@@ -112,10 +115,15 @@ class QueueWorker {
       speed: null,
       outputTimeSeconds: 0,
       durationSeconds: 0,
+      originalBytes: null,
+      outputBytes: null,
+      sizeEstimate: null,
+      metadataReady: false,
       tempPath: null
     };
 
     let tempPath = null;
+    let failed = false;
 
     try {
       if (profile.key === 'skip') {
@@ -132,6 +140,9 @@ class QueueWorker {
       const inputProbe = await probeFile(job.path, this.config);
       tempPath = createTempOutput(job.id, job.path, this.config.cacheDir);
       this.activeJob.durationSeconds = inputProbe.durationSeconds;
+      this.activeJob.originalBytes = inputProbe.sizeBytes;
+      this.activeJob.metadataReady = true;
+      this.activeJob.sizeEstimate = estimateOutputSize(inputProbe, profile, this.config.audioBitrate);
       this.activeJob.tempPath = tempPath;
       this.db.updateInputMetadata(job.id, inputProbe, tempPath);
 
@@ -157,6 +168,8 @@ class QueueWorker {
       this.throwIfCancelled();
       const outputProbe = await probeFile(tempPath, this.config);
       verifyOutput(inputProbe, outputProbe);
+      this.activeJob.outputBytes = outputProbe.sizeBytes;
+      this.activeJob.sizeEstimate = { estimatedOutputBytes: outputProbe.sizeBytes, method: 'complete' };
       this.throwIfCancelled();
 
       await atomicReplace(job.path, tempPath, {
@@ -201,13 +214,15 @@ class QueueWorker {
           this.logger.warn('Active job cancelled', { jobId: job.id });
         }
       } else {
+        failed = true;
         const message = error.details ? `${error.message}\n${error.details}` : error.message;
         this.db.failJob(job.id, message);
-        this.logger.error('Transcode failed', { jobId: job.id, error: error.message });
+        this.logger.error('Transcode failed', { jobId: job.id, path: job.path, error: message });
       }
     } finally {
       try {
         await removeTemp(tempPath);
+        if (!failed) await fs.rm(jobLogPath(this.config, job.id), { force: true });
       } catch (error) {
         this.logger.warn('Could not remove transcode temporary file', { tempPath, error: error.message });
       }
@@ -234,6 +249,11 @@ class QueueWorker {
     this.activeJob.speed = progress.speed;
     this.activeJob.outputTimeSeconds = progress.outputTimeSeconds;
     this.activeJob.tempPath = progress.tempPath;
+    if (progress.outputBytes > 0) {
+      this.activeJob.outputBytes = progress.outputBytes;
+      const estimate = estimateFromProgress(progress.outputBytes, progress.outputTimeSeconds, this.activeJob.durationSeconds);
+      if (estimate) this.activeJob.sizeEstimate = estimate;
+    }
 
     const timestamp = Date.now();
     if (timestamp - this.lastProgressWrite >= 2000 || progress.percent === 100) {
