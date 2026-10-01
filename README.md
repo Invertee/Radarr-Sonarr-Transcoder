@@ -6,14 +6,19 @@ The browser interface provides:
 
 - A reorderable one-at-a-time conversion queue.
 - Current FFmpeg progress, frame rate and speed.
-- Sonarr and Radarr media browsers with file size, duration, resolution and conversion state.
+- Sonarr and Radarr media browsers with file size, GB/hour, resolution and conversion state.
 - Manual conversion jobs.
 - Saved custom profiles with quality and maximum-resolution sliders.
 - Rough output-size previews and live estimates during encoding.
 - Persistent history and space-saving statistics.
 - Application and FFmpeg logs.
+- Live transcode-cache size beside **Clear Cache**.
 
-Media metadata returned by Sonarr and Radarr is cached in SQLite as it is browsed. Episode-file and movie views can fall back to the cached records after a temporary API failure, and the **Probe** action reads exact size, duration, resolution, codec and audio-language information directly with `ffprobe`.
+Media metadata returned by Sonarr and Radarr is cached in SQLite as it is browsed. Episode-file and movie views can fall back to the cached records after a temporary API failure. **Probe** refreshes exact file metadata and opens a modal with a readable summary and the full `ffprobe` format, streams, tags and chapters.
+
+**GB/hour** uses the same 1024-based GB as file-size displays. Movies and episode files use their individual size and duration; probing refreshes both. The main TV browser shows an approximate average (marked `~`): total size divided by stored episode count and Sonarr's typical episode runtime. Missing size, runtime or episodes shows `-`. The column sorts by the unrounded value.
+
+The cache size is the total size of files in the configured transcode-cache directory, including active output, and updates with the status display. **Clear Cache** removes inactive transcode temporary files, so active output and unrelated files may keep the total above zero.
 
 The service intentionally has no user authentication. Deploy it only on a trusted local network or restrict access with a firewall or reverse proxy.
 

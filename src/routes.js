@@ -5,6 +5,7 @@ const fs = require('node:fs/promises');
 const { jobLogPath } = require('./job-log');
 const express = require('express');
 const { clearCache, probeFile, supportedContainer } = require('./ffmpeg');
+const { getCacheSize } = require('./cache-cleaner');
 const { PROFILES, getProfile, listProfiles, normalizeTag, selectProfileFromTags } = require('./profiles');
 const { mapServicePath } = require('./path-mapper');
 const { extractWebhookJob } = require('./webhook');
@@ -107,6 +108,15 @@ function parseJobBody(body, config, customProfiles = []) {
 function createRouter({ db, worker, arrClient, config, logger, startedAt }) {
   const router = express.Router();
 
+  async function cacheSize() {
+    try {
+      return await getCacheSize(config.cacheDir);
+    } catch (error) {
+      logger.warn('Could not read cache size', { error: error.message });
+      return null;
+    }
+  }
+
   router.use((request, response, next) => {
     response.setHeader('Cache-Control', 'no-store');
     next();
@@ -122,12 +132,13 @@ function createRouter({ db, worker, arrClient, config, logger, startedAt }) {
     });
   });
 
-  router.get('/api/status', (request, response) => {
+  router.get('/api/status', asyncRoute(async (request, response) => {
     const stats = db.stats();
     const current = worker.status();
     const payload = {
       version: config.appVersion,
       startedAt,
+      cacheSizeBytes: await cacheSize(),
       current: {
         ...current,
         file: current.file,
@@ -149,7 +160,7 @@ function createRouter({ db, worker, arrClient, config, logger, startedAt }) {
     }
 
     response.json(payload);
-  });
+  }));
 
   router.get('/api/stats', (request, response) => {
     response.json(db.stats());
@@ -266,7 +277,7 @@ function createRouter({ db, worker, arrClient, config, logger, startedAt }) {
 
   router.post('/api/clear-cache', asyncRoute(async (request, response) => {
     const removed = await clearCache(config.cacheDir, worker.activeTempPath());
-    response.json({ removed });
+    response.json({ removed, cacheSizeBytes: await cacheSize() });
   }));
 
   router.post('/api/media/probe', asyncRoute(async (request, response) => {
@@ -280,7 +291,7 @@ function createRouter({ db, worker, arrClient, config, logger, startedAt }) {
     }
     validateMediaPath(mediaPath);
 
-    const probe = await probeFile(mediaPath, config);
+    const probe = await probeFile(mediaPath, config, { full: true });
     if (service === 'sonarr' || service === 'radarr') {
       db.updateCachedMediaProbe(service, mediaPath, probe);
     }
@@ -295,7 +306,8 @@ function createRouter({ db, worker, arrClient, config, logger, startedAt }) {
       audioStreams: probe.audioStreams,
       audioLanguages: probe.audioLanguages,
       subtitleStreams: probe.subtitleStreams,
-      attachmentStreams: probe.attachmentStreams
+      attachmentStreams: probe.attachmentStreams,
+      mediaInfo: probe.mediaInfo
     });
   }));
 

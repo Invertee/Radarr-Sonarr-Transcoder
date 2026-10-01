@@ -30,7 +30,7 @@ button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .55; }
 
 .page-shell {
-  width: min(1600px, calc(100% - 40px));
+  width: min(1760px, calc(100% - 40px));
   margin: 0 auto;
   padding: 28px 0 48px;
 }
@@ -112,7 +112,9 @@ h3 { margin-bottom: 0; font-size: 1rem; }
 .stat-card strong { font-size: 1.55rem; }
 .stat-card:nth-child(1) strong { color: var(--success); }
 .stat-card:nth-child(2) strong { color: var(--primary); }
-.stat-card--actions { display: grid; place-items: center; }
+.stat-card--actions { display: grid; place-items: center; gap: 8px; }
+.stat-card--actions .cache-size { margin: 0; color: var(--muted); font-size: .88rem; }
+.media-rate-cell { white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 .connection-row {
   justify-content: flex-start;

@@ -69,10 +69,12 @@ function runProcess(command, args, options = {}) {
   });
 }
 
-async function probeFile(filePath, config) {
+async function probeFile(filePath, config, { full = false } = {}) {
   const args = [
     '-v', 'error',
-    '-show_entries', 'format=duration,size:stream=index,codec_type,codec_name,width,height,channels:stream_tags=language,title:stream_disposition=default,forced',
+    ...(full ? ['-show_format', '-show_streams', '-show_chapters'] : [
+      '-show_entries', 'format=duration,size:stream=index,codec_type,codec_name,width,height,channels:stream_tags=language,title:stream_disposition=default,forced'
+    ]),
     '-of', 'json',
     filePath
   ];
@@ -108,7 +110,8 @@ async function probeFile(filePath, config) {
     subtitleStreams: subtitles.length,
     attachmentStreams: attachments.length,
     audioLanguages,
-    streams
+    streams,
+    ...(full ? { mediaInfo: payload } : {})
   };
 }
 

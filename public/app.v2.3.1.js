@@ -18,6 +18,7 @@ const state = {
 
 const elements = {};
 let toastTimer = null;
+let probeFocusSelector = null;
 
 function byId(id) {
   return document.getElementById(id);
@@ -91,6 +92,50 @@ function formatDuration(seconds) {
   const minutes = Math.floor((rounded % 3600) / 60);
   const remainingSeconds = rounded % 60;
   return [hours, minutes, remainingSeconds].map((part) => String(part).padStart(2, '0')).join(':');
+}
+
+function gbPerHour(sizeBytes, durationSeconds) {
+  const size = Number(sizeBytes);
+  const duration = Number(durationSeconds);
+  if (!Number.isFinite(size) || size <= 0 || !Number.isFinite(duration) || duration <= 0) {
+    return null;
+  }
+  return size / (1024 ** 3) / (duration / 3600);
+}
+
+function rateCell(sizeBytes, durationSeconds, estimated = false) {
+  const rate = gbPerHour(sizeBytes, durationSeconds);
+  const hint = estimated ? 'Average estimated from total size, stored episode count and typical episode runtime.'
+    : 'File size divided by runtime in hours.';
+  return `<td class="media-rate-cell" data-sort-value="${rate ?? -1}" title="${hint}">${rate === null ? '-' : `${estimated ? '~' : ''}${rate.toFixed(2)}`}</td>`;
+}
+
+function renderCacheSize(sizeBytes) {
+  elements.cacheSize.textContent = sizeBytes === null || sizeBytes === undefined ? 'Unavailable' : formatBytes(sizeBytes);
+}
+
+function showMediaInfo(item) {
+  elements.mediaInfoHeading.textContent = `Media information: ${item.title}`;
+  elements.mediaInfoPath.textContent = item.path;
+  const rate = gbPerHour(item.sizeBytes, item.durationSeconds);
+  const summary = [
+    ['Size', formatBytes(item.sizeBytes)],
+    ['Duration', formatDuration(item.durationSeconds)],
+    ['GB/hour', rate === null ? '-' : rate.toFixed(2)],
+    ['Resolution', item.resolution || 'Unknown'],
+    ['Video codec', item.videoCodec || 'Unknown'],
+    ['Audio', formatAudio(item)],
+    ['Subtitles', item.subtitleStreams ?? 0],
+    ['Attachments', item.attachmentStreams ?? 0]
+  ];
+  elements.mediaInfoSummary.innerHTML = summary.map(([label, value]) =>
+    `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join('');
+  elements.mediaInfoJson.textContent = JSON.stringify(item.mediaInfo, null, 2);
+  const action = item.service === 'sonarr' ? 'probe-sonarr' : 'probe-radarr';
+  const index = (item.service === 'sonarr' ? state.sonarrFiles : state.movies).indexOf(item);
+  probeFocusSelector = `[data-action="${action}"][data-index="${index}"]`;
+  elements.mediaInfoModal.showModal();
+  document.body.classList.add('modal-open');
 }
 
 function formatDate(value) {
@@ -259,6 +304,7 @@ async function refreshStatus() {
     elements.statSaved.textContent = `${Number(stats.savedGiB ?? stats.saved_gb ?? 0).toFixed(2)} GB`;
     elements.statEfficiency.textContent = `${Number(stats.efficiencyPercent ?? stats.percent ?? 0).toFixed(1)}%`;
     elements.statProcessed.textContent = String(stats.filesProcessed ?? stats.count ?? 0);
+    renderCacheSize(data.cacheSizeBytes);
 
     state.queue = Array.isArray(data.queue) ? data.queue : [];
     elements.queueCount.textContent = String(state.queue.length);
@@ -269,6 +315,7 @@ async function refreshStatus() {
     elements.statusText.style.color = 'var(--danger)';
     elements.currentFile.textContent = error.message;
     elements.currentSizeEstimate.textContent = '';
+    renderCacheSize(null);
   } finally {
     state.statusRefreshInFlight = false;
   }
@@ -360,20 +407,20 @@ async function loadSeries(force = false) {
     renderSeries();
     return;
   }
-  elements.seriesBody.innerHTML = '<tr><td colspan="4" class="empty-cell">Loading Sonarr series...</td></tr>';
+  elements.seriesBody.innerHTML = '<tr><td colspan="5" class="empty-cell">Loading Sonarr series...</td></tr>';
   try {
     state.series = await api('/api/media/sonarr/series');
     state.loaded.add('series');
     renderSeries();
   } catch (error) {
-    elements.seriesBody.innerHTML = `<tr><td colspan="4" class="empty-cell">${escapeHtml(error.message)}</td></tr>`;
+    elements.seriesBody.innerHTML = `<tr><td colspan="5" class="empty-cell">${escapeHtml(error.message)}</td></tr>`;
   }
 }
 
 function renderSeries() {
   const filtered = state.series.filter((series) => searchMatches(series, elements.seriesSearch.value.trim(), ['title', 'year', 'status']));
   if (filtered.length === 0) {
-    elements.seriesBody.innerHTML = `<tr><td colspan="4" class="empty-cell">${state.series.length ? 'No shows match the filter.' : 'No Sonarr series were returned.'}</td></tr>`;
+    elements.seriesBody.innerHTML = `<tr><td colspan="5" class="empty-cell">${state.series.length ? 'No shows match the filter.' : 'No Sonarr series were returned.'}</td></tr>`;
     return;
   }
   elements.seriesBody.innerHTML = filtered.map((series) => `
@@ -381,6 +428,7 @@ function renderSeries() {
       <td><span class="table-title">${escapeHtml(series.title)}</span>${series.year ? ` <span class="path-text">${escapeHtml(series.year)}</span>` : ''}</td>
       <td>${escapeHtml(series.episodeFileCount)}</td>
       <td data-sort-value="${escapeHtml(Number(series.sizeBytes) || 0)}">${escapeHtml(formatBytes(series.sizeBytes))}</td>
+      ${rateCell(series.sizeBytes, Number(series.runtimeMinutes) * 60 * Number(series.episodeFileCount), true)}
       <td><button class="button button--small button--primary" type="button" data-action="browse-series" data-id="${series.id}">Browse</button></td>
     </tr>
   `).join('');
@@ -391,13 +439,13 @@ async function loadEpisodes(seriesId) {
   const series = state.series.find((item) => Number(item.id) === Number(seriesId));
   elements.episodeHeading.textContent = series ? series.title : 'Series files';
   elements.episodeSummary.textContent = 'Loading...';
-  elements.episodesBody.innerHTML = '<tr><td colspan="6" class="empty-cell">Loading episode files...</td></tr>';
+  elements.episodesBody.innerHTML = '<tr><td colspan="7" class="empty-cell">Loading episode files...</td></tr>';
   try {
     state.sonarrFiles = await api(`/api/media/sonarr/series/${encodeURIComponent(seriesId)}/files`);
     renderSonarrFiles();
   } catch (error) {
     elements.episodeSummary.textContent = '';
-    elements.episodesBody.innerHTML = `<tr><td colspan="6" class="empty-cell">${escapeHtml(error.message)}</td></tr>`;
+    elements.episodesBody.innerHTML = `<tr><td colspan="7" class="empty-cell">${escapeHtml(error.message)}</td></tr>`;
   }
 }
 
@@ -410,7 +458,7 @@ function renderSonarrFiles() {
     ? `${filtered.length} of ${state.sonarrFiles.length} file(s)`
     : `${state.sonarrFiles.length} file(s)`;
   if (filtered.length === 0) {
-    elements.episodesBody.innerHTML = `<tr><td colspan="6" class="empty-cell">${state.sonarrFiles.length ? 'No files match the filter.' : 'No episode files were returned.'}</td></tr>`;
+    elements.episodesBody.innerHTML = `<tr><td colspan="7" class="empty-cell">${state.sonarrFiles.length ? 'No files match the filter.' : 'No episode files were returned.'}</td></tr>`;
     return;
   }
   elements.episodesBody.innerHTML = filtered.map((file) => {
@@ -419,6 +467,7 @@ function renderSonarrFiles() {
       <tr>
         <td><span class="table-title">${escapeHtml(file.title)}</span><span class="path-text" title="${escapeHtml(file.path)}">${escapeHtml(file.relativePath || file.path)}</span></td>
         <td data-sort-value="${escapeHtml(Number(file.sizeBytes) || 0)}">${escapeHtml(formatBytes(file.sizeBytes))}${mediaEstimate(file, elements.episodeProfile.value)}</td>
+        ${rateCell(file.sizeBytes, file.durationSeconds)}
         <td>${escapeHtml(file.resolution || 'Unknown')}</td>
         <td>${escapeHtml(formatAudio(file))}</td>
         <td class="media-state-cell">${mediaState(file)}</td>
@@ -450,13 +499,13 @@ async function loadMovies(force = false) {
     renderMovies();
     return;
   }
-  elements.moviesBody.innerHTML = '<tr><td colspan="6" class="empty-cell">Loading Radarr movies...</td></tr>';
+  elements.moviesBody.innerHTML = '<tr><td colspan="7" class="empty-cell">Loading Radarr movies...</td></tr>';
   try {
     state.movies = await api('/api/media/radarr/movies');
     state.loaded.add('movies');
     renderMovies();
   } catch (error) {
-    elements.moviesBody.innerHTML = `<tr><td colspan="6" class="empty-cell">${escapeHtml(error.message)}</td></tr>`;
+    elements.moviesBody.innerHTML = `<tr><td colspan="7" class="empty-cell">${escapeHtml(error.message)}</td></tr>`;
   }
 }
 
@@ -465,7 +514,7 @@ function renderMovies() {
     'title', 'year', 'relativePath', 'path', 'resolution', 'videoCodec', 'audioCodec', 'audioLanguages', 'quality'
   ]));
   if (filtered.length === 0) {
-    elements.moviesBody.innerHTML = `<tr><td colspan="6" class="empty-cell">${state.movies.length ? 'No movies match the filter.' : 'No Radarr movies were returned.'}</td></tr>`;
+    elements.moviesBody.innerHTML = `<tr><td colspan="7" class="empty-cell">${state.movies.length ? 'No movies match the filter.' : 'No Radarr movies were returned.'}</td></tr>`;
     return;
   }
   elements.moviesBody.innerHTML = filtered.map((movie) => {
@@ -474,6 +523,7 @@ function renderMovies() {
       <tr>
         <td><span class="table-title">${escapeHtml(movie.title)}${movie.year ? ` (${escapeHtml(movie.year)})` : ''}</span><span class="path-text" title="${escapeHtml(movie.path)}">${escapeHtml(movie.relativePath || (movie.hasFile ? movie.path : 'No file'))}</span></td>
         <td data-sort-value="${escapeHtml(movie.hasFile ? Number(movie.sizeBytes) || 0 : 0)}">${movie.hasFile ? escapeHtml(formatBytes(movie.sizeBytes)) : '-'}${mediaEstimate(movie, elements.movieProfile.value)}</td>
+        ${rateCell(movie.hasFile ? movie.sizeBytes : null, movie.durationSeconds)}
         <td>${movie.hasFile ? escapeHtml(movie.resolution || 'Unknown') : '-'}</td>
         <td>${movie.hasFile ? escapeHtml(formatAudio(movie)) : '-'}</td>
         <td class="media-state-cell">${movie.hasFile ? mediaState(movie) : statusPill('unknown', 'No file')}</td>
@@ -491,7 +541,7 @@ async function probeMedia(item) {
   Object.assign(item, probe, {
     resolution: probe.resolution || (probe.width && probe.height ? `${probe.width}x${probe.height}` : 'Unknown')
   });
-  showToast(`Probed ${item.title}: ${item.resolution}, ${formatDuration(item.durationSeconds)}, ${formatAudio(item)}.`);
+  showMediaInfo(item);
 }
 
 async function queueMedia(item, profileKey) {
@@ -628,7 +678,7 @@ async function handleAction(event) {
 function cacheElements() {
   for (const id of [
     'statusText', 'progressBar', 'currentFile', 'currentMetrics', 'statSaved', 'statEfficiency',
-    'statProcessed', 'clearCacheButton', 'sonarrConnection', 'radarrConnection',
+    'statProcessed', 'clearCacheButton', 'cacheSize', 'sonarrConnection', 'radarrConnection',
     'refreshConnectionsButton', 'appVersion', 'queueCount', 'cancelActiveButton',
     'clearQueueButton', 'manualJobForm', 'manualPath', 'manualProfile', 'queueBody',
     'refreshSeriesButton', 'seriesSearch', 'seriesBody', 'episodeHeading', 'episodeSummary',
@@ -637,7 +687,8 @@ function cacheElements() {
     'currentSizeEstimate', 'manualEstimateButton', 'manualSizeEstimate', 'profileForm',
     'profileEditorKey', 'profileName', 'profileQuality', 'profileQualityValue',
     'profileResolution', 'profileResolutionValue', 'saveProfileButton', 'deleteProfileButton', 'profileTag',
-    'refreshLogsButton', 'logWindow', 'toast'
+    'refreshLogsButton', 'logWindow', 'toast', 'mediaInfoModal', 'mediaInfoHeading',
+    'mediaInfoPath', 'mediaInfoSummary', 'mediaInfoJson', 'mediaInfoClose'
   ]) {
     elements[id] = byId(id);
   }
@@ -648,6 +699,15 @@ function bindEvents() {
     tab.addEventListener('click', () => void activatePanel(tab.dataset.panel));
   });
   document.addEventListener('click', (event) => void handleAction(event));
+  elements.mediaInfoClose.addEventListener('click', () => elements.mediaInfoModal.close());
+  elements.mediaInfoModal.addEventListener('click', (event) => {
+    if (event.target === elements.mediaInfoModal) elements.mediaInfoModal.close();
+  });
+  elements.mediaInfoModal.addEventListener('close', () => {
+    if (byId('episodeModal').hidden) document.body.classList.remove('modal-open');
+    document.querySelector(probeFocusSelector)?.focus();
+    probeFocusSelector = null;
+  });
 
   elements.manualJobForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -703,6 +763,7 @@ function bindEvents() {
     }
     try {
       const result = await api('/api/clear-cache', { method: 'POST' });
+      renderCacheSize(result.cacheSizeBytes);
       showToast(`${result.removed} temporary file(s) removed.`);
     } catch (error) {
       showToast(error.message, true);

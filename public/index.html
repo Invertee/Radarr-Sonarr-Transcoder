@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>Transcode Manager</title>
-  <link rel="stylesheet" href="/styles.v2.0.1.css?v=2.0.1">
+  <link rel="stylesheet" href="/styles.v2.0.1.css?v=2.3.1-media-info">
   <link rel="stylesheet" href="/table-tools.v2.1.0.css?v=2.1.0">
-  <link rel="stylesheet" href="/media-modal.v2.2.0.css?v=2.2.0">
+  <link rel="stylesheet" href="/media-modal.v2.2.0.css?v=2.3.1-media-info">
   <link rel="stylesheet" href="/conversion-profiles.v2.3.0.css">
 </head>
 <body>
@@ -48,6 +48,7 @@
         <strong id="statProcessed">805</strong>
       </article>
       <article class="stat-card stat-card--actions">
+        <span class="cache-size" title="Total file size in the transcode cache, including active output. Clear Cache removes only inactive transcode temporary files.">Cache: <output id="cacheSize">Checking…</output></span>
         <button id="clearCacheButton" class="button button--danger button--outline" type="button">Clear Cache</button>
       </article>
     </section>
@@ -128,8 +129,8 @@
       </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Series</th><th>Files</th><th>Size</th><th class="actions-column">Actions</th></tr></thead>
-          <tbody id="seriesBody"><tr><td colspan="4" class="empty-cell">Open this tab to load Sonarr.</td></tr></tbody>
+          <thead><tr><th>Series</th><th>Files</th><th>Size</th><th title="Average estimated using the stored episode count and typical episode runtime">GB/hour</th><th class="actions-column">Actions</th></tr></thead>
+          <tbody id="seriesBody"><tr><td colspan="5" class="empty-cell">Open this tab to load Sonarr.</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -151,9 +152,9 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Movie</th><th>Size</th><th>Resolution</th><th>Audio</th><th>Converted</th><th class="actions-column">Actions</th></tr>
+            <tr><th>Movie</th><th>Size</th><th>GB/hour</th><th>Resolution</th><th>Audio</th><th>Converted</th><th class="actions-column">Actions</th></tr>
           </thead>
-          <tbody id="moviesBody"><tr><td colspan="6" class="empty-cell">Open this tab to load Radarr.</td></tr></tbody>
+          <tbody id="moviesBody"><tr><td colspan="7" class="empty-cell">Open this tab to load Radarr.</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -246,18 +247,37 @@
       <div class="table-wrap media-modal__table">
         <table>
           <thead>
-            <tr><th>Episode</th><th>Size</th><th>Resolution</th><th>Audio</th><th>Converted</th><th class="actions-column">Actions</th></tr>
+            <tr><th>Episode</th><th>Size</th><th>GB/hour</th><th>Resolution</th><th>Audio</th><th>Converted</th><th class="actions-column">Actions</th></tr>
           </thead>
-          <tbody id="episodesBody"><tr><td colspan="6" class="empty-cell">Select a series.</td></tr></tbody>
+          <tbody id="episodesBody"><tr><td colspan="7" class="empty-cell">Select a series.</td></tr></tbody>
         </table>
       </div>
     </section>
   </div>
 
+  <dialog id="mediaInfoModal" class="probe-modal" aria-labelledby="mediaInfoHeading" aria-describedby="mediaInfoPath">
+    <section class="media-modal__dialog">
+      <header class="media-modal__header">
+        <div>
+          <h2 id="mediaInfoHeading">Media information</h2>
+          <span id="mediaInfoPath" class="media-modal__summary"></span>
+        </div>
+        <button id="mediaInfoClose" class="media-modal__close" type="button" aria-label="Close media information" autofocus>×</button>
+      </header>
+      <div class="probe-modal__content">
+        <dl id="mediaInfoSummary" class="probe-summary"></dl>
+        <details open>
+          <summary>Full ffprobe information</summary>
+          <pre id="mediaInfoJson" class="probe-json"></pre>
+        </details>
+      </div>
+    </section>
+  </dialog>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="/conversion-estimates.js?v=2.3.1" defer></script>
-  <script src="/app.v2.3.1.js?v=2.3.1-size-sort" defer></script>
+  <script src="/app.v2.3.1.js?v=2.3.1-media-info" defer></script>
   <script src="/table-tools.v2.1.0.js?v=2.1.0" defer></script>
-  <script src="/episode-modal.v2.2.0.js?v=2.2.0" defer></script>
+  <script src="/episode-modal.v2.2.0.js?v=2.3.1-media-info" defer></script>
 </body>
 </html>

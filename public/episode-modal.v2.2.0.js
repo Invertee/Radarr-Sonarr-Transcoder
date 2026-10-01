@@ -50,6 +50,7 @@
     });
 
     document.addEventListener('keydown', (event) => {
+      if (document.getElementById('mediaInfoModal')?.open) return;
       if (event.key === 'Escape' && !modal.hidden) {
         event.preventDefault();
         closeModal();

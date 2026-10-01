@@ -197,6 +197,7 @@ class ArrClient {
       monitored: Boolean(item.monitored),
       sizeBytes: Number(item.statistics?.sizeOnDisk || 0),
       episodeFileCount: Number(item.statistics?.episodeFileCount || 0),
+      runtimeMinutes: Number(item.runtime) || null,
       tags: Array.isArray(item.tags) ? item.tags : []
     }));
   }
