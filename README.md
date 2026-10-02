@@ -16,7 +16,7 @@ The browser interface provides:
 
 Media metadata returned by Sonarr and Radarr is cached in SQLite as it is browsed. Episode-file and movie views can fall back to the cached records after a temporary API failure. **Probe** refreshes exact file metadata and opens a modal with a readable summary and the full `ffprobe` format, streams, tags and chapters.
 
-**GB/hour** uses the same 1024-based GB as file-size displays. Movies and episode files use their individual size and duration; probing refreshes both. The main TV browser shows an approximate average (marked `~`): total size divided by stored episode count and Sonarr's typical episode runtime. Missing size, runtime or episodes shows `-`. The column sorts by the unrounded value.
+**GB/hour** uses the same 1024-based GB as file-size displays. Movies and episode files use their individual size and duration when available; probing refreshes both. When an episode file has no duration, the series' typical episode runtime gives an approximate rate (marked `~`), accounting for files containing multiple episodes. The main TV browser shows an approximate average (also marked `~`): total size divided by stored episode count and Sonarr's typical episode runtime. Missing size or runtime shows `-`. The column sorts by the unrounded value.
 
 The cache size is the total size of files in the configured transcode-cache directory, including active output, and updates with the status display. **Clear Cache** removes inactive transcode temporary files, so active output and unrelated files may keep the total above zero.
 

@@ -105,8 +105,9 @@ function gbPerHour(sizeBytes, durationSeconds) {
 
 function rateCell(sizeBytes, durationSeconds, estimated = false) {
   const rate = gbPerHour(sizeBytes, durationSeconds);
-  const hint = estimated ? 'Average estimated from total size, stored episode count and typical episode runtime.'
-    : 'File size divided by runtime in hours.';
+  const hint = estimated === 'episode' ? 'Estimated using this file size and the series typical runtime for its episodes.'
+    : estimated ? 'Average estimated from total size, stored episode count and typical episode runtime.'
+      : 'File size divided by runtime in hours.';
   return `<td class="media-rate-cell" data-sort-value="${rate ?? -1}" title="${hint}">${rate === null ? '-' : `${estimated ? '~' : ''}${rate.toFixed(2)}`}</td>`;
 }
 
@@ -463,11 +464,15 @@ function renderSonarrFiles() {
   }
   elements.episodesBody.innerHTML = filtered.map((file) => {
     const index = state.sonarrFiles.indexOf(file);
+    const series = state.series.find((item) => Number(item.id) === Number(file.seriesId ?? state.currentSeriesId));
+    const actualDuration = Number(file.durationSeconds);
+    const hasActualDuration = Number.isFinite(actualDuration) && actualDuration > 0;
+    const estimatedDuration = Number(series?.runtimeMinutes) * 60 * Number(file.episodeCount || 1);
     return `
       <tr>
         <td><span class="table-title">${escapeHtml(file.title)}</span><span class="path-text" title="${escapeHtml(file.path)}">${escapeHtml(file.relativePath || file.path)}</span></td>
         <td data-sort-value="${escapeHtml(Number(file.sizeBytes) || 0)}">${escapeHtml(formatBytes(file.sizeBytes))}${mediaEstimate(file, elements.episodeProfile.value)}</td>
-        ${rateCell(file.sizeBytes, file.durationSeconds)}
+        ${rateCell(file.sizeBytes, hasActualDuration ? actualDuration : estimatedDuration, hasActualDuration ? false : 'episode')}
         <td>${escapeHtml(file.resolution || 'Unknown')}</td>
         <td>${escapeHtml(formatAudio(file))}</td>
         <td class="media-state-cell">${mediaState(file)}</td>

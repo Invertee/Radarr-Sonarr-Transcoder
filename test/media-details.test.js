@@ -63,6 +63,26 @@ test('movie and episode rates keep unrounded sort values and suppress absent fil
   assert.match(context.moviesHtml, /class="media-rate-cell" data-sort-value="-1"[^>]*>-</);
 });
 
+test('episode browser estimates missing file runtimes from series runtime and episode count', () => {
+  const context = frontend();
+  context.items = [
+    { title: 'Single', seriesId: 7, sizeBytes: 2 * gb, durationSeconds: null, episodeCount: 1 },
+    { title: 'Double', seriesId: 7, sizeBytes: 2 * gb, durationSeconds: null, episodeCount: 2 },
+    { title: 'Measured', seriesId: 7, sizeBytes: 2 * gb, durationSeconds: 3600, episodeCount: 2 },
+    { title: 'Unknown', seriesId: 8, sizeBytes: 2 * gb, durationSeconds: null, episodeCount: 1 }
+  ];
+  vm.runInContext(`
+    state.series = [{ id: 7, runtimeMinutes: 30 }];
+    state.sonarrFiles = items;
+    renderSonarrFiles();
+    globalThis.episodesHtml = elements.episodesBody.innerHTML;
+  `, context);
+  assert.match(context.episodesHtml, /Single[\s\S]*?data-sort-value="4"[^>]*>~4\.00<\/td>/);
+  assert.match(context.episodesHtml, /Double[\s\S]*?data-sort-value="2"[^>]*>~2\.00<\/td>/);
+  assert.match(context.episodesHtml, /Measured[\s\S]*?data-sort-value="2"[^>]*>2\.00<\/td>/);
+  assert.match(context.episodesHtml, /Unknown[\s\S]*?data-sort-value="-1"[^>]*>-<\/td>/);
+});
+
 test('Probe opens full media information safely and updates file metadata', async () => {
   const context = frontend();
   const mediaInfo = { format: { tags: { title: '<script>unsafe</script>' } }, streams: [{ codec_name: 'hevc', pix_fmt: 'yuv420p10le' }], chapters: [{ id: 1 }] };
@@ -90,6 +110,16 @@ test('Sonarr series metadata includes its typical runtime without fetching episo
   assert.equal(series.runtimeMinutes, 45);
   assert.equal(series.episodeFileCount, 10);
   assert.equal(calls, 1);
+});
+
+test('Sonarr episode files include the number of episodes sharing each file', async () => {
+  const client = new ArrClient({ sonarr: {} }, {});
+  client.request = async (service, endpoint) => endpoint.startsWith('/api/v3/episodefile')
+    ? [{ id: 1, size: gb }, { id: 2, size: gb }]
+    : [{ id: 11, episodeFileId: 1 }, { id: 12, episodeFileId: 1 }];
+  const files = await client.getSonarrFiles(7);
+  assert.equal(files[0].episodeCount, 2);
+  assert.equal(files[1].episodeCount, 1);
 });
 
 test('media-info dismissal restores focus and preserves the underlying episode modal', () => {

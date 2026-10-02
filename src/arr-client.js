@@ -220,11 +220,13 @@ class ArrClient {
 
     return (Array.isArray(files) ? files : []).map((file) => {
       const resolution = parseResolution(file.mediaInfo, file.quality);
+      const fileEpisodes = episodesByFileId.get(file.id) || [];
       return {
         service: 'sonarr',
-        itemId: (episodesByFileId.get(file.id) || [])[0]?.id || null,
+        itemId: fileEpisodes[0]?.id || null,
         seriesId: Number(seriesId),
         fileId: file.id,
+        episodeCount: fileEpisodes.length || 1,
         title: episodeDisplayTitle(file, episodesByFileId),
         relativePath: file.relativePath || '',
         path: mapServicePath('sonarr', file.path, this.config),
